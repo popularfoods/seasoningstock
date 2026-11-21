@@ -51,13 +51,19 @@ function renderBatches(){
  if(!rows.length)return CFG.url?'<div class="empty">No batches here. Use <b>Receive stock</b> to add one.</div>':'<div class="empty">Not signed in yet. Tap <b>Connection</b> above.</div>';
  const inp=(b,f,cls='',type='text')=>`<input class="${cls}" type="${type}" data-b="${b.id}" data-f="${f}" value="${esc(b[f])}" aria-label="${f}">`;
  return`<table><thead><tr>${U.client=='All'?'<th>Client</th>':''}<th>Seasoning</th><th>Base</th><th>Supplier</th><th>Product code</th><th>Batch</th><th>MFG</th><th>EXP</th><th></th><th class="n">Opening</th><th class="n">In</th><th class="n">Used</th><th class="n">Written off</th><th class="n">Closing</th><th>Quick</th><th>Remark</th></tr></thead><tbody>${rows.map(b=>{const c=C[b.id];return`<tr class="${c.close>0?'':'dead'}">${U.client=='All'?`<td>${esc(b.client)}</td>`:''}<td>${inp(b,'item','w')}</td><td>${inp(b,'base')}</td><td>${inp(b,'supplier')}</td><td>${inp(b,'code')}</td><td>${inp(b,'batch')}</td><td>${inp(b,'mfg','','date')}</td><td>${inp(b,'exp','','date')}</td><td>${chip(b)}</td><td class="n">${inp(b,'opening','','number')}</td><td class="n">${c.in?fmt(c.in):''}</td><td class="n">${c.use?fmt(c.use):''}</td><td class="n">${c.exp?fmt(c.exp):''}</td><td class="n c">${fmt(c.close)}</td><td><div class="rb"><button title="Receive into this batch" data-row="in" data-id="${b.id}">+</button><button title="Use in production" data-row="use" data-id="${b.id}">−</button><button title="Write off" data-row="exp" data-id="${b.id}">×</button></div></td><td>${inp(b,'remark')}</td></tr>`}).join('')}</tbody></table>`}
+const ikey=(c,i)=>c+'|'+key(i);
+function summary(list){const g={};for(const b of list){const k=ikey(b.client,b.item);(g[k]??={id:k,item:b.item,client:b.client,bs:[]}).bs.push(b)}
+ const d30=new Date(Date.parse(today())-30*864e5).toISOString().slice(0,10),IT=S.items||{};
+ return Object.values(g).map(x=>{const live=x.bs.filter(b=>stock(b)>0),ids=new Set(x.bs.map(b=>b.id)),isExp=b=>effExp(b)&&days(effExp(b))<0;
+  const kg=live.reduce((s,b)=>s+stock(b),0),bad=live.filter(isExp).reduce((s,b)=>s+stock(b),0),good=kg-bad,it=IT[x.id]||{};
+  const bases=[...new Set(x.bs.map(b=>b.base).filter(Boolean))].join(', ');
+  const auto=bad>0?(good>0?fmt(bad)+' kg expired':'Expired'):'';
+  return{...x,live,kg,bad,good,bases,pct:it.pct||'',fg:it.pct?good*100/it.pct:null,remark:it.remark||'',auto,next:live.filter(b=>!isExp(b)).map(effExp).filter(Boolean).sort()[0],
+   used:S.moves.filter(m=>ids.has(m.b)&&m.t=='use'&&m.date>=d30).reduce((s,m)=>s+m.q,0)}}).sort((a,b)=>b.kg-a.kg)}
 function renderItems(){
- const g={};for(const b of vis()){const k=b.client+'|'+key(b.item);(g[k]??={item:b.item,client:b.client,bs:[]}).bs.push(b)}
- const d30=new Date(Date.parse(today())-30*864e5).toISOString().slice(0,10);
- const rows=Object.values(g).map(x=>{const live=x.bs.filter(b=>stock(b)>0);const ids=new Set(x.bs.map(b=>b.id));
-  return{...x,live,kg:live.reduce((s,b)=>s+stock(b),0),next:live.map(effExp).filter(Boolean).sort()[0],used:S.moves.filter(m=>ids.has(m.b)&&m.t=='use'&&m.date>=d30).reduce((s,m)=>s+m.q,0)}}).sort((a,b)=>b.kg-a.kg);
- if(!rows.length)return'<div class="empty">Nothing matches.</div>';
- return`<table><thead><tr><th>Seasoning</th><th>Client</th><th class="n">Live batches</th><th class="n">On hand (kg)</th><th>Nearest expiry</th><th></th><th class="n">Used, 30 days</th></tr></thead><tbody>${rows.map(r=>`<tr class="click ${r.kg>0?'':'dead'}" data-item="${esc(r.item)}" data-cl="${esc(r.client)}"><td><b>${esc(r.item)}</b></td><td>${esc(r.client)}</td><td class="n">${r.live.length}</td><td class="n c">${fmt(r.kg)}</td><td>${dshow(r.next)}</td><td>${r.next?chip({exp:r.next}):''}</td><td class="n">${r.used?fmt(r.used):''}</td></tr>`).join('')}</tbody></table>`}
+ const rows=summary(vis());if(!rows.length)return'<div class="empty">Nothing matches.</div>';
+ const tot=rows.reduce((t,r)=>({kg:t.kg+r.kg,good:t.good+r.good,fg:t.fg+(r.fg||0)}),{kg:0,good:0,fg:0});
+ return`<table><thead><tr><th>Seasoning</th><th>Client</th><th>Base</th><th class="n">Batches</th><th class="n">On hand (kg)</th><th class="n">Usable (kg)</th><th class="n">Seasoning %</th><th class="n">Est. FG output (kg)</th><th>Nearest expiry</th><th></th><th class="n">Used, 30 days</th><th>Remarks</th></tr></thead><tbody>${rows.map(r=>`<tr class="${r.kg>0?'':'dead'}"><td><button class="lnk" data-item="${esc(r.item)}" data-cl="${esc(r.client)}">${esc(r.item)}</button></td><td>${esc(r.client)}</td><td>${esc(r.bases)}</td><td class="n">${r.live.length}</td><td class="n">${fmt(r.kg)}</td><td class="n c">${fmt(r.good)}</td><td class="n"><input type="number" step="0.01" min="0" max="100" data-it="${esc(r.id)}" data-f="pct" value="${r.pct}" placeholder="%" aria-label="Seasoning percent"></td><td class="n c">${r.fg!=null?fmt(r.fg):'<span class="mut">set %</span>'}</td><td>${dshow(r.next)}</td><td>${r.next?chip({exp:r.next}):''}</td><td class="n">${r.used?fmt(r.used):''}</td><td>${r.auto?`<span class="chip ${r.good>0?'a':'r'}">${r.auto}</span> `:''}<input class="w" data-it="${esc(r.id)}" data-f="remark" value="${esc(r.remark)}" placeholder="Add remark" aria-label="Remark"></td></tr>`).join('')}</tbody><tfoot><tr><td colspan="4"><b>Total</b></td><td class="n">${fmt(tot.kg)}</td><td class="n c">${fmt(tot.good)}</td><td></td><td class="n c">${fmt(tot.fg)}</td><td colspan="4"></td></tr></tfoot></table>`}
 function renderLog(){
  const ids=new Set(vis().map(b=>b.id)),B=Object.fromEntries(S.batches.map(b=>[b.id,b]));
  const ms=S.moves.filter(m=>ids.has(m.b)).sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id,undefined,{numeric:true})).slice(0,300);
@@ -75,8 +81,9 @@ function apply(op){const p=op.p;
  if(op.a=='addMove'){if(p.batch&&!S.batches.some(b=>b.id==p.batch.id))S.batches.push({...p.batch});if(!S.moves.some(m=>m.id==p.move.id))S.moves.push({...p.move})}
  else if(op.a=='deleteMove')S.moves=S.moves.filter(m=>m.id!=p.id);
  else if(op.a=='updateBatch'){const b=S.batches.find(x=>x.id==p.id);if(b)b[p.f]=p.v}
+ else if(op.a=='setItem'){S.items=S.items||{};const it=S.items[p.id]=S.items[p.id]||{pct:'',remark:''};it[p.f]=p.v}
  else if(op.a=='dismissFlag')S.flags=S.flags.filter(f=>f!=p.text)}
-function act(a,p){if(!CFG.url){showSetup();return false}const op={id:uid(),a,p};apply(op);Q.push(op);lsSet('ss-queue',Q);lsSet('ss-cache',S);render();flush();return true}
+function act(a,p){if(!CFG.url){showSetup();return false}const op={id:uid(),a,p};apply(op);Q.push(op);lsSet('ss-queue',Q);lsSet('ss-cache',S);setTimeout(render);flush();return true}
 function client(){if(!CFG.url||!window.supabase)return null;if(!sb)sb=window.supabase.createClient(CFG.url,CFG.anon,{auth:{persistSession:true,autoRefreshToken:true,storageKey:'ss-auth'}});return sb}
 const nz=v=>v===''||v==null?null:v,ez=v=>v==null?'':String(v);
 function chk(r){if(r&&r.error){const c=String(r.error.code||''),msg=r.error.message||'error',e=new Error(msg);
@@ -86,11 +93,12 @@ async function fetchAll(t,f){let out=[],from=0;for(;;){let q=client().from(t).se
 const toRow=b=>({id:b.id,client:b.client,item:b.item,base:b.base||'',supplier:b.supplier||'',code:b.code||'',batch:b.batch||'',mfg:nz(b.mfg),exp:nz(b.exp),ext:nz(b.ext),opening:+b.opening||0,remark:b.remark||''});
 const moveRow=m=>({id:m.id,date:m.date,batch_id:m.b,type:m.t,qty:+m.q,note:m.note||'',deleted:false,deleted_at:null});
 const API={
- async all(){const[b,m,f]=await Promise.all([fetchAll('batches'),fetchAll('movements',q=>q.eq('deleted',false)),fetchAll('flags',q=>q.eq('done',false))]);
-  return{batches:b.map(x=>({...toRow(x),mfg:ez(x.mfg),exp:ez(x.exp),ext:ez(x.ext)})),moves:m.map(x=>({id:x.id,date:x.date,b:x.batch_id,t:x.type,q:+x.qty,note:x.note||''})),flags:f.map(x=>x.text)}},
+ async all(){const[b,m,f,it]=await Promise.all([fetchAll('batches'),fetchAll('movements',q=>q.eq('deleted',false)),fetchAll('flags',q=>q.eq('done',false)),fetchAll('items').catch(()=>[])]);
+  return{batches:b.map(x=>({...toRow(x),mfg:ez(x.mfg),exp:ez(x.exp),ext:ez(x.ext)})),moves:m.map(x=>({id:x.id,date:x.date,b:x.batch_id,t:x.type,q:+x.qty,note:x.note||''})),flags:f.map(x=>x.text),items:Object.fromEntries(it.map(x=>[x.id,{pct:x.pct==null?'':+x.pct,remark:x.remark||''}]))}},
  async addMove(p){const c=client();if(p.batch)chk(await c.from('batches').upsert(toRow(p.batch),{onConflict:'id',ignoreDuplicates:true}));chk(await c.from('movements').upsert(moveRow(p.move),{onConflict:'id'}))},
  async deleteMove(p){chk(await client().from('movements').update({deleted:true,deleted_at:new Date().toISOString()}).eq('id',p.id))},
  async updateBatch(p){const v=['mfg','exp','ext'].includes(p.f)?nz(p.v):p.f=='opening'?(+p.v||0):(p.v??'');chk(await client().from('batches').update({[p.f]:v}).eq('id',p.id))},
+ async setItem(p){const v=p.f=='pct'?(p.v===''||p.v==null?null:+p.v):(p.v||'');chk(await client().from('items').upsert({id:p.id,client:p.client,item:p.item,[p.f]:v,updated_at:new Date().toISOString()},{onConflict:'id'}))},
  async dismissFlag(p){chk(await client().from('flags').update({done:true}).eq('text',p.text))},
  async importAll(p){const c=client(),r=await c.from('batches').select('id',{count:'exact',head:true});chk(r);
   if(r.count>0)throw new Error('The database already has batches — import is only for an empty database');
@@ -186,13 +194,15 @@ $('#fall').onclick=()=>{const b=S.batches.find(x=>x.id==F.b.value);if(b){F.q.val
 $('#fx').onclick=close;$('#sheet').onclick=e=>{if(e.target.id=='sheet')close()};
 document.addEventListener('keydown',e=>{if(e.key=='Escape'&&!$('#sheet').hidden)close()});
 /* page events */
-document.addEventListener('click',e=>{const t=e.target.closest('button,[data-item]');if(!t)return;const d=t.dataset;
+document.addEventListener('click',e=>{const t=e.target.closest('button');if(!t)return;const d=t.dataset;
  if(d.open)open(d.open);else if(d.row)open(d.row,d.id);else if(d.wo)open('exp',d.wo);
  else if(d.allx){U.allx=!U.allx;render()}else if(d.c){U.client=d.c;render()}else if(d.v){U.view=d.v;render()}
  else if(d.flag!=null){act('dismissFlag',{text:S.flags[+d.flag]})}
  else if(d.del){if(t.textContent!='sure?'){t.textContent='sure?';return}const m=S.moves.find(x=>x.id==d.del);act('deleteMove',{id:d.del});toast('Movement deleted',()=>act('addMove',{move:m}))}
  else if(d.item){U.view='batches';U.client=d.cl;U.q=d.item;$('#q').value=d.item;render()}});
-$('#view').addEventListener('change',e=>{const i=e.target;if(!i.dataset.f)return;const b=S.batches.find(x=>x.id==i.dataset.b);if(!b)return;
+$('#view').addEventListener('change',e=>{const i=e.target;if(!i.dataset.f)return;
+ if(i.dataset.it){const [cl]=i.dataset.it.split('|'),r=S.batches.find(b=>ikey(b.client,b.item)==i.dataset.it);let v=i.value.trim();if(i.dataset.f=='pct'){if(v!==''&&!(+v>0&&+v<=100)){toast('Seasoning % must be between 0 and 100');render();return}v=v===''?'':+v}
+  act('setItem',{id:i.dataset.it,client:cl,item:r?r.item:'',f:i.dataset.f,v});return}const b=S.batches.find(x=>x.id==i.dataset.b);if(!b)return;
  const v=i.dataset.f=='opening'?(+i.value||0):i.value.trim();if(v!==b[i.dataset.f])act('updateBatch',{id:b.id,f:i.dataset.f,v})});
 $('#q').oninput=e=>{U.q=e.target.value;render()};
 $('#empty').onchange=e=>{U.empty=e.target.checked;render()};
@@ -200,7 +210,7 @@ $('#empty').onchange=e=>{U.empty=e.target.checked;render()};
 $('#xl').onclick=async()=>{if(!window.XLSX){toast('Excel library did not load — check your connection');return}calc();
  const wb=XLSX.utils.book_new(),B=Object.fromEntries(S.batches.map(b=>[b.id,b]));
  const rowOf=(b,i)=>{const c=C[b.id];return{'Sl.No':i+1,Seasoning:b.item,Base:b.base,Supplier:b.supplier,'Product Code':b.code,Batch:b.batch,MFG:dshow(b.mfg),EXP:dshow(b.exp),'Shelf-life Ext.':dshow(b.ext),'Opening Stock':b.opening,Received:c.in,Used:c.use,'Written off':c.exp,Corrections:c.adj,'Closing Stock':c.close,Remark:b.remark}};
- const sum=[];for(const cl of clients()){const g={};S.batches.filter(b=>b.client==cl).forEach(b=>{const k=key(b.item);(g[k]??={Client:cl,Seasoning:b.item,'On hand (kg)':0,'Live batches':0,'Nearest expiry':''});if(stock(b)>0){g[k]['On hand (kg)']+=stock(b);g[k]['Live batches']++;const e=effExp(b);if(e&&(!g[k]._e||e<g[k]._e))g[k]._e=e}});Object.values(g).forEach(r=>{r['Nearest expiry']=dshow(r._e);delete r._e;sum.push(r)})}
+ const sum=summary(S.batches).filter(r=>r.kg>0).map((r,n)=>({'Sl No':n+1,Name:r.item,Client:r.client+(r.bases?' ('+r.bases+')':''),'Qty (kg)':+r.kg.toFixed(3),'Usable (kg)':+r.good.toFixed(3),'Seasoning %':r.pct||'','FG Qty (kg)':r.fg!=null?Math.round(r.fg):'','Nearest expiry':dshow(r.next),Remarks:[r.auto,r.remark].filter(Boolean).join(' · ')}));
  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(sum),'Summary');
  for(const cl of clients())XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(S.batches.filter(b=>b.client==cl).map(rowOf)),cl.slice(0,31));
  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(S.moves.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(m=>({Date:dshow(m.date),Type:NAMES[m.t],Client:B[m.b]?.client,Seasoning:B[m.b]?.item,Batch:B[m.b]?.batch,'Qty (kg)':m.t=='use'||m.t=='exp'?-m.q:m.q,Note:m.note}))),'Movements');

@@ -48,6 +48,16 @@ create table if not exists public.movements (
 create index if not exists movements_batch_idx on public.movements (batch_id);
 create index if not exists movements_date_idx  on public.movements (date);
 
+-- per-product settings for the Summary: seasoning % (for estimated FG output) and a remark
+create table if not exists public.items (
+  id         text primary key,             -- client|seasoning name (lowercase)
+  client     text not null,
+  item       text not null,
+  pct        numeric check (pct is null or (pct > 0 and pct <= 100)),
+  remark     text not null default '',
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.flags (
   text text primary key,
   done boolean not null default false
@@ -63,11 +73,12 @@ create trigger batches_touch before update on public.batches for each row execut
 alter table public.batches   enable row level security;
 alter table public.movements enable row level security;
 alter table public.flags     enable row level security;
+alter table public.items     enable row level security;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['batches','movements','flags'] loop
+  foreach t in array array['batches','movements','flags','items'] loop
     execute format('drop policy if exists "members read" on public.%I', t);
     execute format('drop policy if exists "members add" on public.%I', t);
     execute format('drop policy if exists "members edit" on public.%I', t);
@@ -80,9 +91,9 @@ end $$;
 -- 4b. Table permissions for signed-in users (newer Supabase projects don't grant these automatically).
 --     The policies above still decide which rows: only members get anything.
 grant usage on schema public to authenticated;
-grant select, insert, update on public.batches, public.movements, public.flags to authenticated;
+grant select, insert, update on public.batches, public.movements, public.flags, public.items to authenticated;
 grant execute on function public.is_member() to authenticated;
-revoke all on public.batches, public.movements, public.flags, public.members from anon;
+revoke all on public.batches, public.movements, public.flags, public.items, public.members from anon;
 
 -- 5. A ready-made stock view for the Table Editor / reports (same numbers as the app)
 create or replace view public.stock with (security_invoker = true) as
@@ -105,4 +116,5 @@ begin
   begin alter publication supabase_realtime add table public.batches;   exception when others then null; end;
   begin alter publication supabase_realtime add table public.movements; exception when others then null; end;
   begin alter publication supabase_realtime add table public.flags;     exception when others then null; end;
+  begin alter publication supabase_realtime add table public.items;     exception when others then null; end;
 end $$;
