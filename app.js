@@ -33,7 +33,7 @@ function renderTop(){
  const mv=t=>S.moves.filter(m=>m.t==t&&m.date>w).reduce((s,m)=>s+m.q,0);
  $('#figs').innerHTML=[[fmt(sum(live)),'kg','On hand'],[live.length,'','Live batches'],[fmt(sum(expd)),'kg','Expired, still in store',expd.length],[fmt(sum(soon)),'kg','Expiring in 30 days'],[fmt(mv('in')),'kg','Received, last 7 days'],[fmt(mv('use')),'kg','Used, last 7 days']]
   .map(([v,u,l,bad])=>`<div class="fig${bad?' bad':''}"><b>${v}<small>${u}</small></b><span>${l}</span></div>`).join('');
- $('#sub').textContent='Popular Essentials · '+dshow(today())+' · '+clients().length+' clients';
+ $('#sub').textContent='Popular Essentials · Quality & Food Safety · '+dshow(today())+' · '+clients().length+' clients';
  const al=[];
  const ex=expd.sort((a,b)=>stock(b)-stock(a)),exs=U.allx?ex:ex.slice(0,6);
  if(expd.length)al.push(`<div class="al red"><strong>Expired, still in stock</strong>${exs.map(b=>`<button class="pill" data-wo="${b.id}">${esc(b.item)} · ${esc(b.client)} · ${fmt(stock(b))} kg — write off</button>`).join('')}${ex.length>6?`<button class="x" data-allx="1">${U.allx?'show fewer':'+'+(ex.length-6)+' more'}</button>`:''}</div>`);
