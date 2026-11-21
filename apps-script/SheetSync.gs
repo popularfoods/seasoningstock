@@ -1,11 +1,12 @@
 /**
  * Seasoning Stock — hourly READ-ONLY sync from the Google Sheet to the website.
  *
- * This script only reads the sheet (openById + getDisplayValues). It never writes to it.
+ * This script only reads the sheet (Sheets API: spreadsheets.get + values.batchGet). It never writes to it.
  * Install it in YOUR Google account as a standalone project (script.google.com → New project),
  * not inside the sheet, so the sheet itself is not touched at all.
  *
  *   1. Paste this file, fill in SHEET_ID and SUPABASE_ANON below, Save.
+ *      Also paste appsscript.json from the repo (it turns on the read-only Sheets service).
  *   2. Run `makeSecret` once → copy the SQL line from the log and run it in Supabase → SQL Editor.
  *   3. Run `syncNow` once → allow access. Check the log says "Synced".
  *   4. Run `setupHourly` once → it then runs every hour on its own.
@@ -39,8 +40,12 @@ function makeSecret() {
 function syncNow() {
   const secret = PropertiesService.getScriptProperties().getProperty('SYNC_SECRET');
   if (!secret) throw new Error('Run makeSecret first.');
-  const book = SpreadsheetApp.openById(SHEET_ID);            // read access is enough
-  const tabs = book.getSheets().map(sh => ({ name: sh.getName(), values: sh.getDataRange().getDisplayValues() }));
+  // Read-only: the Sheets API "Sheets" service under the spreadsheets.readonly permission.
+  const titles = Sheets.Spreadsheets.get(SHEET_ID, { fields: 'sheets.properties.title' }).sheets.map(x => x.properties.title);
+  const got = Sheets.Spreadsheets.Values.batchGet(SHEET_ID, {
+    ranges: titles.map(t => "'" + t.replace(/'/g, "''") + "'"), valueRenderOption: 'FORMATTED_VALUE'
+  });
+  const tabs = got.valueRanges.map((v, i) => ({ name: titles[i], values: v.values || [] }));
   const out = buildPayload(tabs);
   const res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/rpc/sync_sheet', {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
