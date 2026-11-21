@@ -255,6 +255,12 @@ function renderProj(){
   return`<tr><td><b>${esc(n)}</b></td><td class="n">${pc?pctS(pc)+'%':'<span class="mut">set %</span>'}</td><td class="n c">${st!=null?fmt(st):'<span class="mut">link stock ↓</span>'}</td>${cells}<td class="n c">${fmt(r1(cum))}</td><td class="n c ${left==null?'':left<0?'neg':'pos'}">${left==null?'':(left<0?'−':'')+fmt(r1(Math.abs(left)))}</td><td>${st==null?'':out?`<span class="chip r">Short from ${mlabel(out)}</span>`:'<span class="chip s">Covers plan</span>'}</td></tr>`}).join('');
  const t1=`<h3 class="ph">Seasoning needed vs usable stock (kg)</h3><p class="mut pnote">Need = packets × pack size × seasoning %. From this month on: green while usable (unexpired) stock still covers the running total, red once it runs short. Past months are greyed out and not counted against today's stock.</p>
  <table class="pt"><thead><tr><th>Seasoning</th><th class="n">%</th><th class="n">Usable stock</th>${months.map(m=>`<th class="n${m<cur?' past':''}">${mlabel(m)}</th>`).join('')}<th class="n">Need from ${ahead.length?mlabel(ahead[0]):'now'}</th><th class="n">Left after plan</th><th></th></tr></thead><tbody>${rows1}</tbody></table>`;
+ // 1b. per product, laid out like Working → Table 3
+ const rowsT3=skus.flatMap(sk=>{const list=(sk.seasonings||[]).length?sk.seasonings:[''];return list.map((n,k)=>{const pc=n?P[n]?.pct:null;
+  const vals=months.map(m=>pc?(+(S.plan[sk.id+'|'+m]||0))*(+sk.pack_kg||0)*pc:0),tot=vals.reduce((s,v)=>s+v,0);
+  return`<tr${k?' class="extra"':''}><td>${esc(sk.item_code||'')}</td><td>${esc(sk.id)}</td><td>${k?'<span class="mut">↳ also uses</span>':esc(sk.name)}</td><td>${esc(n)||'<span class="mut">—</span>'}</td><td class="n">${pc?pctS(pc)+'%':''}</td><td class="n">${sk.pack_kg?+sk.pack_kg:''}</td>${vals.map(v=>`<td class="n">${pc?fmt(Math.round(v*1000)/1000):''}</td>`).join('')}<td class="n c">${pc?fmt(Math.round(tot*1000)/1000):''}</td></tr>`})}).join('');
+ const t1b=`<h3 class="ph">Seasoning needed per product (kg) — like Working, Table 3</h3><p class="mut pnote">Same rows and columns as Table 3 in the Working sheet, so you can compare cell by cell: packets (Table 1) × pack size (UOM) × seasoning %. All months shown. “Also uses” rows are second ingredients from the Calculation sheet (C100, CH10G), which Table 3 leaves out.</p>
+ <div class="scroll"><table class="pt t3"><thead><tr><th>item_code</th><th>PE ID</th><th>sku_name</th><th>Seasoning</th><th class="n">%</th><th class="n">UOM</th>${months.map(m=>`<th class="n">${mlabel(m)}</th>`).join('')}<th class="n">Total</th></tr></thead><tbody>${rowsT3}</tbody></table></div>`;
  // 2. FG possible from current stock (Calculation sheet)
  const rows2=skus.flatMap(sk=>(sk.seasonings||[]).map((n,k)=>{const pc=P[n]?.pct,st=stockOf(n),fg=st!=null&&pc?st/pc:null,pk=fg!=null&&sk.pack_kg?fg/sk.pack_kg:null;
   const planned=months.reduce((s,m)=>s+(+(S.plan[sk.id+'|'+m]||0)),0);
@@ -270,7 +276,7 @@ function renderProj(){
  const rows4=names.map(n=>`<tr><td><b>${esc(n)}</b></td><td class="n"><input type="number" min="0" max="100" step="0.01" data-seas="${esc(n)}" data-f="pct" value="${pctS(P[n]?.pct)}" aria-label="Seasoning percent"></td><td><select data-seas="${esc(n)}" data-f="stock_grp" aria-label="Stock line">${sopt(P[n]?.stock_grp||'')}</select></td></tr>`).join('');
  const t4=`<h3 class="ph">Seasoning % and stock link</h3><p class="mut pnote">Which line of your Summary holds each seasoning's stock. Linked lines also get their FG Qty calculated on the Summary.</p>
  <table class="pt"><thead><tr><th>Seasoning</th><th class="n">% of FG</th><th>Stock (Summary line)</th></tr></thead><tbody>${rows4}</tbody></table>`;
- return imp+t1+t2+t3+t4}
+ return imp+t1+t1b+t2+t3+t4}
 /* import a projections workbook in the browser */
 let PI=null;
 function parseProj(buf){
