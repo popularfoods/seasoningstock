@@ -234,18 +234,18 @@ function autoLink(name,client){const A=toks(name),c=key(client);
  const hit=Object.entries(S.items||{}).find(([id,s])=>s.sort!=null&&s.sort!==''&&key(s.client).startsWith(c)&&sameToks(A,toks(s.item)));
  return hit?hit[0]:''}
 function projData(){
- const P=S.ps||{},skus=(S.skus||[]).slice().sort((a,b)=>(a.sort??999)-(b.sort??999)||a.id.localeCompare(b.id));
+ const P=S.ps||{},cl=key(U.client),skus=(S.skus||[]).filter(s=>U.client=='All'||key(s.client)===cl||key(s.client).startsWith(cl+' ')).sort((a,b)=>(a.sort??999)-(b.sort??999)||a.id.localeCompare(b.id));
  const months=[...new Set(Object.keys(S.plan||{}).map(k=>k.split('|')[1]))].sort();
  const sum=Object.fromEntries(summary(S.batches).map(r=>[r.id,r]));
  const need={};for(const sk of skus)for(const n of sk.seasonings||[]){const pc=P[n]?.pct;if(!pc)continue;need[n]??={};
   for(const m of months){const pk=+(S.plan[sk.id+'|'+m]||0);need[n][m]=(need[n][m]||0)+pk*(+sk.pack_kg||0)*pc}}
- const names=[...new Set([...Object.keys(P),...skus.flatMap(s=>s.seasonings||[])])].sort((a,b)=>{const ta=months.reduce((s,m)=>s+(need[a]?.[m]||0),0),tb=months.reduce((s,m)=>s+(need[b]?.[m]||0),0);return tb-ta||a.localeCompare(b)});
+ const names=[...new Set([...(U.client=='All'?Object.keys(P):[]),...skus.flatMap(s=>s.seasonings||[])])].sort((a,b)=>{const ta=months.reduce((s,m)=>s+(need[a]?.[m]||0),0),tb=months.reduce((s,m)=>s+(need[b]?.[m]||0),0);return tb-ta||a.localeCompare(b)});
  const stockOf=n=>{const g=P[n]?.stock_grp;return g&&sum[g]?sum[g].good:null};
  return{P,skus,months,need,names,stockOf,sum}}
 function renderProj(){
  const{P,skus,months,need,names,stockOf}=projData();
  const imp=`<div class="pbar"><label class="ghostd">Import projections (.xlsx)<input type="file" id="pimp" accept=".xlsx,.xls" hidden></label><span class="mut">Same layout as “Noice Projections”: Working, Calculation and Seasoning Per Kg sheets. Nothing from the file is stored in the website code.</span></div>${PI?`<div class="al amb pprev"><strong>Ready to import</strong> ${PI.skus.length} products, ${PI.seas.length} seasonings, ${PI.months.length} months (${mlabel(PI.months[0])} – ${mlabel(PI.months[PI.months.length-1])}). Planned packets for these products and months will be replaced. <button class="pill" id="pgo">Import</button> <button class="x" id="pno">Cancel</button></div>`:''}`;
- if(!skus.length)return imp+'<div class="empty">No projections yet. Import your projections file to see how much seasoning the plan needs, month by month, against what is in stock.</div>';
+ if(!skus.length)return imp+(U.client!='All'&&(S.skus||[]).length?`<div class="empty">No projections for <b>${esc(U.client)}</b> yet. Projections so far are for: ${esc([...new Set(S.skus.map(s=>s.client||'—'))].join(', '))}. Import a projections file for ${esc(U.client)} to see it here.</div>`:'<div class="empty">No projections yet. Import your projections file to see how much seasoning the plan needs, month by month, against what is in stock.</div>');
  const sopt=(cur)=>`<option value="">— not linked —</option>`+Object.entries(S.items||{}).filter(([,s])=>s.sort!=null&&s.sort!=='').sort((a,b)=>a[1].sort-b[1].sort).map(([id,s])=>`<option value="${esc(id)}"${id===cur?' selected':''}>${esc(s.item)} · ${esc(s.client)}</option>`).join('');
  // 1. need vs stock
  const cur=today().slice(0,8)+'01',ahead=months.filter(m=>m>=cur);
