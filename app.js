@@ -4,7 +4,8 @@ $('#root').innerHTML=$('#shell').innerHTML;
 let LS=null;try{LS=window.localStorage;LS.getItem('x')}catch(e){LS=null}
 const lsGet=(k,d)=>{try{const v=LS&&LS.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}};
 const lsSet=(k,v)=>{try{LS&&LS.setItem(k,JSON.stringify(v))}catch(e){}};
-let CFG=lsGet('ss-cfg',{url:'',anon:''});
+/* Public project address + anon key: safe to ship — without a member's email and password they open nothing (row-level security). */
+const CFG={url:'https://oqmvufrwgkgauwohoawc.supabase.co',anon:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xbXZ1ZnJ3Z2tnYXV3b2hvYXdjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUyNDc2MDMsImV4cCI6MjExMDgyMzYwM30.3GXx0I9kmFSZiNgFh-i1Qt3lwYkNAj8BJqBHJHtbyzU'};
 let S=lsGet('ss-cache',{batches:[],moves:[],flags:[]});
 let Q=lsGet('ss-queue',[]);
 const U=Object.assign({client:'All',q:'',view:'batches',empty:false},lsGet('ss-ui',{}),{q:''});
@@ -79,8 +80,8 @@ function act(a,p){if(!CFG.url){showSetup();return false}const op={id:uid(),a,p};
 function client(){if(!CFG.url||!window.supabase)return null;if(!sb)sb=window.supabase.createClient(CFG.url,CFG.anon,{auth:{persistSession:true,autoRefreshToken:true,storageKey:'ss-auth'}});return sb}
 const nz=v=>v===''||v==null?null:v,ez=v=>v==null?'':String(v);
 function chk(r){if(r&&r.error){const c=String(r.error.code||''),msg=r.error.message||'error',e=new Error(msg);
- e.fatal=c=='PGRST301'||c=='42501'||r.status==401||/jwt|not authenticated|row-level security/i.test(msg);
- e.drop=!e.fatal&&/^(22|23)/.test(c);throw e}return r.data}
+ e.fatal=c=='PGRST301'||r.status==401||/jwt|not authenticated/i.test(msg);e.perm=c=='42501'||/permission denied|row-level security/i.test(msg);
+ e.drop=!e.fatal&&!e.perm&&/^(22|23)/.test(c);throw e}return r.data}
 async function fetchAll(t,f){let out=[],from=0;for(;;){let q=client().from(t).select('*').order(t=='flags'?'text':'id').range(from,from+999);if(f)q=f(q);const d=chk(await q)||[];out=out.concat(d);if(d.length<1000)return out;from+=1000}}
 const toRow=b=>({id:b.id,client:b.client,item:b.item,base:b.base||'',supplier:b.supplier||'',code:b.code||'',batch:b.batch||'',mfg:nz(b.mfg),exp:nz(b.exp),ext:nz(b.ext),opening:+b.opening||0,remark:b.remark||''});
 const moveRow=m=>({id:m.id,date:m.date,batch_id:m.b,type:m.t,qty:+m.q,note:m.note||'',deleted:false,deleted_at:null});
@@ -106,7 +107,7 @@ async function flush(){if(busy||!CFG.url)return;busy=true;status();
  status()}
 async function pull(force){if(!CFG.url||busy)return;if(Q.length&&!force)return flush();busy=true;
  try{const j=await call('all',{});S=j;Q.forEach(apply);lsSet('ss-cache',S);lastSync=new Date();offline=false;render()}
- catch(e){if(e.fatal)showSetup('Please sign in again.');else offline=true}
+ catch(e){if(e.fatal)showSetup('Please sign in again.');else if(e.perm)showSetup('Signed in, but the database is missing permissions: '+e.message+'. Run the grant SQL in Supabase, then tap Sign in.');else offline=true}
  busy=false;status()}
 let liveT;
 function goLive(){const c=client();if(!c||live)return;try{live=c.channel('stock').on('postgres_changes',{event:'*',schema:'public'},()=>{clearTimeout(liveT);liveT=setTimeout(()=>Q.length?flush():pull(),700)}).subscribe()}catch(e){}}
@@ -114,21 +115,20 @@ setInterval(()=>{if(document.visibilityState=='visible')Q.length?flush():pull()}
 addEventListener('focus',()=>pull());addEventListener('online',()=>flush());
 /* connection + sign-in */
 const SF=$('#sf');
-async function showSetup(msg){SF.url.value=CFG.url;SF.anon.value=CFG.anon;$('#smsg').className=msg&&!/^Signed in/.test(msg)?'bad':'';$('#smsg').textContent=msg||'';
+async function showSetup(msg){SF.email.value=SF.email.value||lsGet('ss-email','');$('#smsg').className=msg&&!/^Signed in/.test(msg)?'bad':'';$('#smsg').textContent=msg||'';
  let email='';try{const c=client();if(c){const{data}=await c.auth.getSession();email=data.session?.user?.email||''}}catch(e){}
  $('#who').textContent=email?'Signed in as '+email:'';$('#signout').hidden=!email;
  $('#imp').hidden=!(email&&!S.batches.length);$('#setup').hidden=false}
-SF.addEventListener('submit',async e=>{e.preventDefault();const url=SF.url.value.trim().replace(/\/+$/,''),anon=SF.anon.value.trim(),email=SF.email.value.trim(),pw=SF.pw.value;
+SF.addEventListener('submit',async e=>{e.preventDefault();const email=SF.email.value.trim(),pw=SF.pw.value;
  const msg=(t,bad)=>{$('#smsg').className=bad?'bad':'';$('#smsg').textContent=t};
- if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(url))return msg('Project URL should look like https://abcd1234.supabase.co',1);
  if(!window.supabase)return msg('Could not load the database library — check your internet connection.',1);
- msg('Signing in…');if(url!=CFG.url||anon!=CFG.anon){sb=null;live=null}const old=CFG;CFG={url,anon};
+ msg('Signing in…');lsSet('ss-email',email);
  try{const r=await client().auth.signInWithPassword({email,password:pw});if(r.error)throw r.error;
-  lsSet('ss-cfg',CFG);SF.pw.value='';const j=await call('all',{});S=j;Q.forEach(apply);lsSet('ss-cache',S);lastSync=new Date();render();status();goLive();
+  SF.pw.value='';const j=await call('all',{});S=j;Q.forEach(apply);lsSet('ss-cache',S);lastSync=new Date();render();status();goLive();
   $('#who').textContent='Signed in as '+email;$('#signout').hidden=false;
   if(!S.batches.length){msg('Signed in. The database is empty — import your starting stock below. If you expected data, check your email is in the members list.');$('#imp').hidden=false}
   else{msg(`Signed in — ${S.batches.length} batches loaded.`);setTimeout(()=>$('#setup').hidden=true,900)}flush()}
- catch(err){CFG=old;sb=null;msg(/invalid login/i.test(err.message||'')?'Wrong email or password.':'Could not connect: '+(err.message||err),1)}});
+ catch(err){msg(/invalid login/i.test(err.message||'')?'Wrong email or password.':err.perm?'Signed in, but the database is missing permissions ('+err.message+'). Run the grant SQL in Supabase, then tap Sign in again.':'Could not connect: '+(err.message||err),1)}});
 $('#impf').onchange=async e=>{const f=e.target.files[0];if(!f)return;$('#smsg').className='';$('#smsg').textContent='Importing…';
  try{const d=JSON.parse(await f.text());if(!Array.isArray(d.batches))throw new Error('Not a stock file');const j=await call('importAll',{batches:d.batches,moves:d.moves||[],flags:d.flags||[]});
   $('#smsg').textContent=`Imported ${j.imported.batches} batches and ${j.imported.moves} movements.`;$('#imp').hidden=true;await pull(true);setTimeout(()=>$('#setup').hidden=true,1200)}
@@ -136,7 +136,7 @@ $('#impf').onchange=async e=>{const f=e.target.files[0];if(!f)return;$('#smsg').
 $('#sx').onclick=()=>$('#setup').hidden=true;
 $('#cfg').onclick=()=>showSetup();
 $('#signout').onclick=async()=>{if(Q.length&&$('#signout').textContent!='Unsynced changes will be lost — tap again'){$('#signout').textContent='Unsynced changes will be lost — tap again';return}
- try{await client()?.auth.signOut()}catch(e){}['ss-cache','ss-queue','ss-auth'].forEach(k=>{try{LS&&LS.removeItem(k)}catch(e){}});
+ try{await client()?.auth.signOut()}catch(e){}['ss-cache','ss-queue','ss-auth','ss-email'].forEach(k=>{try{LS&&LS.removeItem(k)}catch(e){}});
  S={batches:[],moves:[],flags:[]};Q=[];live=null;render();status();$('#signout').textContent='Sign out';showSetup('Signed out. This browser no longer holds any stock data.')};
 /* form */
 const F=$('#f');let ft='in';

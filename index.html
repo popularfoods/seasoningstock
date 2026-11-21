@@ -93,6 +93,7 @@ td input.w{min-width:170px}td input[type=number]{text-align:right;width:84px}
 @keyframes up{from{transform:translate(-50%,20px);opacity:0}}
 #setup{position:fixed;inset:0;background:rgb(0 0 0/.5);display:grid;place-items:center;z-index:11;padding:16px}
 #sf{background:var(--bg);width:min(540px,100%);border-radius:18px;padding:26px;display:grid;gap:14px;max-height:100%;overflow:auto}
+
 #sf h2{margin:0;font-size:28px;font-stretch:115%;font-weight:800;line-height:1.1}#sf h3{margin:8px 0 0}
 .lead{margin:0;color:var(--mut);font-size:15px}
 #sf .g2 label,#sf label{display:grid;gap:4px;font-size:13px;font-weight:600;color:var(--mut)}
@@ -145,10 +146,8 @@ td input.w{min-width:170px}td input[type=number]{text-align:right;width:84px}
  <datalist id="dl-c"></datalist><datalist id="dl-i"></datalist><datalist id="dl-s"></datalist>
 </form></div>
 <div id="setup" hidden><form id="sf" autocomplete="on">
- <h2>Connect &amp; sign in</h2>
- <p class="lead">Your stock lives in your own Supabase database. These details are saved only in this browser, never in the code.</p>
- <label>Project URL<input name="url" type="url" required placeholder="https://abcd1234.supabase.co" autocomplete="off"></label>
- <label>Anon public key<input name="anon" required autocomplete="off" placeholder="eyJhbGciOi…"></label>
+ <h2>Sign in</h2>
+ <p class="lead">Sign in once on each device — it stays signed in after that.</p>
  <div class="g2"><label>Email<input name="email" type="email" required autocomplete="username"></label><label>Password<input name="pw" type="password" required autocomplete="current-password"></label></div>
  <p id="smsg"></p>
  <div class="fb"><button class="go" type="submit">Sign in</button><button class="cancel" type="button" id="sx">Close</button></div>
