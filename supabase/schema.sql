@@ -40,11 +40,13 @@ create table if not exists public.movements (
   type       text not null check (type in ('in','use','exp','adj')),
   qty        numeric not null check (qty <> 0 and (type = 'adj' or qty > 0)),
   note       text not null default '',
+  for_client text not null default '',     -- production: which client's order this was used for
   created_at timestamptz not null default now(),
   created_by uuid default auth.uid(),
   deleted    boolean not null default false,   -- entries are never erased, only marked
   deleted_at timestamptz
 );
+alter table public.movements add column if not exists for_client text not null default '';
 create index if not exists movements_batch_idx on public.movements (batch_id);
 create index if not exists movements_date_idx  on public.movements (date);
 

@@ -66,9 +66,9 @@ function renderItems(){
  return`<table><thead><tr><th>Seasoning</th><th>Client</th><th>Base</th><th class="n">Batches</th><th class="n">On hand (kg)</th><th class="n">Usable (kg)</th><th class="n">Seasoning %</th><th class="n">Est. FG output (kg)</th><th>Nearest expiry</th><th></th><th class="n">Used, 30 days</th><th>Remarks</th></tr></thead><tbody>${rows.map(r=>`<tr class="${r.kg>0?'':'dead'}"><td><button class="lnk" data-item="${esc(r.item)}" data-cl="${esc(r.client)}">${esc(r.item)}</button></td><td>${esc(r.client)}</td><td>${esc(r.bases)}</td><td class="n">${r.live.length}</td><td class="n">${fmt(r.kg)}</td><td class="n c">${fmt(r.good)}</td><td class="n"><input type="number" step="0.01" min="0" max="100" data-it="${esc(r.id)}" data-f="pct" value="${r.pct}" placeholder="%" aria-label="Seasoning percent"></td><td class="n c">${r.fg!=null?fmt(r.fg):'<span class="mut">set %</span>'}</td><td>${dshow(r.next)}</td><td>${r.next?chip({exp:r.next}):''}</td><td class="n">${r.used?fmt(r.used):''}</td><td>${r.auto?`<span class="chip ${r.good>0?'a':'r'}">${r.auto}</span> `:''}<input class="w" data-it="${esc(r.id)}" data-f="remark" value="${esc(r.remark)}" placeholder="Add remark" aria-label="Remark"></td></tr>`).join('')}</tbody><tfoot><tr><td colspan="4"><b>Total</b></td><td class="n">${fmt(tot.kg)}</td><td class="n c">${fmt(tot.good)}</td><td></td><td class="n c">${fmt(tot.fg)}</td><td colspan="4"></td></tr></tfoot></table>`}
 function renderLog(){
  const ids=new Set(vis().map(b=>b.id)),B=Object.fromEntries(S.batches.map(b=>[b.id,b]));
- const ms=S.moves.filter(m=>ids.has(m.b)).sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id,undefined,{numeric:true})).slice(0,300);
+ const ms=S.moves.filter(m=>ids.has(m.b)).sort((a,b)=>b.date.localeCompare(a.date)||(b.ca||'').localeCompare(a.ca||'')).slice(0,300);
  if(!ms.length)return'<div class="empty">No movements yet. Every receipt, use and write-off will be listed here.</div>';
- return`<table><thead><tr><th>Date</th><th>Type</th><th>Client</th><th>Seasoning</th><th>Batch</th><th class="n">Qty (kg)</th><th>Note</th><th></th></tr></thead><tbody>${ms.map(m=>{const b=B[m.b];return`<tr><td>${dshow(m.date)}</td><td><span class="t ${m.t}">${NAMES[m.t]}</span></td><td>${esc(b.client)}</td><td>${esc(b.item)}</td><td>${esc(b.batch)}</td><td class="n c">${m.t=='use'||m.t=='exp'?'−':m.q>0?'+':''}${fmt(m.q)}</td><td>${esc(m.note)}</td><td><button class="x" data-del="${m.id}">delete</button></td></tr>`}).join('')}</tbody></table>`}
+ return`<table><thead><tr><th>Date</th><th>Type</th><th>Client</th><th>Seasoning</th><th>Batch</th><th>For client</th><th class="n">Qty (kg)</th><th>Note</th><th></th></tr></thead><tbody>${ms.map(m=>{const b=B[m.b];return`<tr><td>${dshow(m.date)}</td><td><span class="t ${m.t}">${NAMES[m.t]}</span></td><td>${esc(b.client)}</td><td>${esc(b.item)}</td><td>${esc(b.batch)}</td><td>${m.t=='use'?`<b>${esc(m.fc||b.client)}</b>`:''}</td><td class="n c">${m.t=='use'||m.t=='exp'?'−':m.q>0?'+':''}${fmt(m.q)}</td><td>${esc(m.note)}</td><td><button class="x" data-del="${m.id}">delete</button></td></tr>`}).join('')}</tbody></table>`}
 function render(){calc();renderTop();$('#view').innerHTML=U.view=='items'?renderItems():U.view=='log'?renderLog():renderBatches();try{LS&&LS.setItem('ss-ui',JSON.stringify({client:U.client,view:U.view,empty:U.empty}))}catch(e){}}
 /* sync with Supabase: every change is an op with its own id, queued in this browser until the database confirms it */
 let busy=false,fails=0,retryT=null,lastSync=null,offline=false,sb=null,live=null,who='';
@@ -91,10 +91,10 @@ function chk(r){if(r&&r.error){const c=String(r.error.code||''),msg=r.error.mess
  e.drop=!e.fatal&&!e.perm&&/^(22|23)/.test(c);throw e}return r.data}
 async function fetchAll(t,f){let out=[],from=0;for(;;){let q=client().from(t).select('*').order(t=='flags'?'text':'id').range(from,from+999);if(f)q=f(q);const d=chk(await q)||[];out=out.concat(d);if(d.length<1000)return out;from+=1000}}
 const toRow=b=>({id:b.id,client:b.client,item:b.item,base:b.base||'',supplier:b.supplier||'',code:b.code||'',batch:b.batch||'',mfg:nz(b.mfg),exp:nz(b.exp),ext:nz(b.ext),opening:+b.opening||0,remark:b.remark||''});
-const moveRow=m=>({id:m.id,date:m.date,batch_id:m.b,type:m.t,qty:+m.q,note:m.note||'',deleted:false,deleted_at:null});
+const moveRow=m=>({id:m.id,date:m.date,batch_id:m.b,type:m.t,qty:+m.q,note:m.note||'',...(m.fc?{for_client:m.fc}:{}),deleted:false,deleted_at:null});
 const API={
  async all(){const[b,m,f,it]=await Promise.all([fetchAll('batches'),fetchAll('movements',q=>q.eq('deleted',false)),fetchAll('flags',q=>q.eq('done',false)),fetchAll('items').catch(()=>[])]);
-  return{batches:b.map(x=>({...toRow(x),mfg:ez(x.mfg),exp:ez(x.exp),ext:ez(x.ext)})),moves:m.map(x=>({id:x.id,date:x.date,b:x.batch_id,t:x.type,q:+x.qty,note:x.note||''})),flags:f.map(x=>x.text),items:Object.fromEntries(it.map(x=>[x.id,{pct:x.pct==null?'':+x.pct,remark:x.remark||''}]))}},
+  return{batches:b.map(x=>({...toRow(x),mfg:ez(x.mfg),exp:ez(x.exp),ext:ez(x.ext)})),moves:m.map(x=>({id:x.id,date:x.date,b:x.batch_id,t:x.type,q:+x.qty,note:x.note||'',fc:x.for_client||'',ca:x.created_at||''})),flags:f.map(x=>x.text),items:Object.fromEntries(it.map(x=>[x.id,{pct:x.pct==null?'':+x.pct,remark:x.remark||''}]))}},
  async addMove(p){const c=client();if(p.batch)chk(await c.from('batches').upsert(toRow(p.batch),{onConflict:'id',ignoreDuplicates:true}));chk(await c.from('movements').upsert(moveRow(p.move),{onConflict:'id'}))},
  async deleteMove(p){chk(await client().from('movements').update({deleted:true,deleted_at:new Date().toISOString()}).eq('id',p.id))},
  async updateBatch(p){const v=['mfg','exp','ext'].includes(p.f)?nz(p.v):p.f=='opening'?(+p.v||0):(p.v??'');chk(await client().from('batches').update({[p.f]:v}).eq('id',p.id))},
@@ -159,19 +159,19 @@ function fillBatches(keep){const c=F.client.value,i=key(F.itm.value);
  else if(ft=='use'){const g=bs.find(b=>!(days(effExp(b))<0));if(g)F.b.value=g.id}
  else if(ft=='exp'){const g=bs.find(b=>days(effExp(b))<0);if(g)F.b.value=g.id}
  hint()}
-function hint(){const h=$('#fhint'),b=S.batches.find(x=>x.id==F.b.value),q=+F.q.value;h.className='';
+function hint(){const h=$('#fhint'),b=S.batches.find(x=>x.id==F.b.value),q=+F.q.value;h.className='';if(ft=='use'&&b&&!F.fc.dataset.touched)F.fc.value=b.client;
  if(ft=='in'){const m=S.batches.find(x=>x.client==F.client.value&&key(x.item)==key(F.itm.value)&&F.batch.value&&key(x.batch)==key(F.batch.value));h.textContent=m?`Batch exists — this adds to it (now ${fmt(stock(m))} kg).`:F.itm.value?'Creates a new batch.':'';return}
  if(!b){h.textContent='';return}
  if(ft=='adj'){h.textContent=`Now ${fmt(stock(b))} kg. Enter + to add, − to reduce.`;return}
  if(q>stock(b)+1e-9){h.className='bad';h.textContent=`Only ${fmt(stock(b))} kg in this batch.`}else h.textContent=q?`Leaves ${fmt(stock(b)-q)} kg in this batch.`:`${fmt(stock(b))} kg available.`;
  if(ft=='use'&&days(effExp(b))<0){h.className='bad';h.textContent='This batch is expired. '+h.textContent}}
-function setType(t){ft=t;$('#ftitle').textContent={in:'Receive stock',use:'Use in production',exp:'Write off / expired',adj:'Correct a count'}[t];
+function setType(t){ft=t;$('#ffc').hidden=t!='use';$('#ftitle').textContent={in:'Receive stock',use:'Use in production',exp:'Write off / expired',adj:'Correct a count'}[t];
  $$('#ftype button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.t==t));
  $('#fnew').hidden=t!='in';$('#fpick').hidden=t=='in';$('#fall').hidden=t=='in'||t=='adj';
  F.q.min=t=='adj'?'':'0.001';F.q.placeholder=t=='adj'?'e.g. -2.5':'';
  F.note.placeholder={in:'e.g. Invoice / GRN no.',use:'e.g. Line 2 – peri peri makhana',exp:'e.g. Expired, disposed',adj:'e.g. Physical count'}[t];
  F.batch.required=false;if(t!='in')fillBatches(F.b.value);else hint()}
-function open(t,id){F.reset();F.date.value=today();if(U.client!='All')F.client.value=U.client;
+function open(t,id){F.reset();delete F.fc.dataset.touched;F.date.value=today();if(U.client!='All')F.client.value=U.client;
  const b=id&&S.batches.find(x=>x.id==id);if(b){F.client.value=b.client;F.itm.value=b.item;if(t=='in')['batch','code','supplier','base','mfg','exp'].forEach(f=>F[f].value=b[f]||'')}
  fillLists();setType(t);if(b&&t!='in')fillBatches(id);$('#sheet').hidden=false;setTimeout(()=>(b?F.q:F.client.value?F.itm:F.client).focus(),30)}
 const close=()=>$('#sheet').hidden=true;
@@ -186,9 +186,10 @@ F.addEventListener('submit',e=>{e.preventDefault();const q=Math.round(+F.q.value
   if(!b){b={id:nid(),client:cl,item:it,base:F.base.value.trim(),supplier:F.supplier.value.trim(),code:F.code.value.trim(),batch:F.batch.value.trim(),mfg:F.mfg.value,exp:F.exp.value,ext:'',opening:0,remark:''};created=true}}
  else{b=S.batches.find(x=>x.id==F.b.value);if(!b){$('#fhint').className='bad';$('#fhint').textContent='Pick a batch.';return}
   if(ft!='adj'&&q>stock(b)+1e-9){hint();return}}
- const m={id:nid(),date,b:b.id,t:ft,q,note};if(!act('addMove',created?{move:m,batch:b}:{move:m}))return;close();
+ const fc=ft=='use'?F.fc.value.trim():'';if(ft=='use'&&!fc){$('#fhint').className='bad';$('#fhint').textContent='Which client is this production for?';return}
+ const m={id:nid(),date,b:b.id,t:ft,q,note,ca:new Date().toISOString(),...(fc?{fc}:{})};if(!act('addMove',created?{move:m,batch:b}:{move:m}))return;close();
  toast(`${NAMES[ft]} ${fmt(Math.abs(q))} kg · ${b.item}${b.batch?' ('+b.batch+')':''}`,()=>act('deleteMove',{id:m.id}))});
-F.addEventListener('input',e=>{const n=e.target.name;if(n=='client'){fillLists();if(ft!='in')fillBatches()}else if(n=='itm'){if(ft!='in')fillBatches();else{const p=S.batches.filter(b=>b.client==F.client.value&&key(b.item)==key(F.itm.value)).pop();if(p)['code','supplier','base'].forEach(f=>{if(!F[f].value)F[f].value=p[f]||''});hint()}}else hint()});
+F.addEventListener('input',e=>{const n=e.target.name;if(n=='fc'){F.fc.dataset.touched=1;return}if(n=='client'){fillLists();if(ft!='in')fillBatches()}else if(n=='itm'){if(ft!='in')fillBatches();else{const p=S.batches.filter(b=>b.client==F.client.value&&key(b.item)==key(F.itm.value)).pop();if(p)['code','supplier','base'].forEach(f=>{if(!F[f].value)F[f].value=p[f]||''});hint()}}else hint()});
 $('#ftype').onclick=e=>{const t=e.target.closest('[data-t]');if(t)setType(t.dataset.t)};
 $('#fall').onclick=()=>{const b=S.batches.find(x=>x.id==F.b.value);if(b){F.q.value=stock(b);hint()}};
 $('#fx').onclick=close;$('#sheet').onclick=e=>{if(e.target.id=='sheet')close()};
@@ -213,7 +214,7 @@ $('#xl').onclick=async()=>{if(!window.XLSX){toast('Excel library did not load �
  const sum=summary(S.batches).filter(r=>r.kg>0).map((r,n)=>({'Sl No':n+1,Name:r.item,Client:r.client+(r.bases?' ('+r.bases+')':''),'Qty (kg)':+r.kg.toFixed(3),'Usable (kg)':+r.good.toFixed(3),'Seasoning %':r.pct||'','FG Qty (kg)':r.fg!=null?Math.round(r.fg):'','Nearest expiry':dshow(r.next),Remarks:[r.auto,r.remark].filter(Boolean).join(' · ')}));
  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(sum),'Summary');
  for(const cl of clients())XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(S.batches.filter(b=>b.client==cl).map(rowOf)),cl.slice(0,31));
- XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(S.moves.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(m=>({Date:dshow(m.date),Type:NAMES[m.t],Client:B[m.b]?.client,Seasoning:B[m.b]?.item,Batch:B[m.b]?.batch,'Qty (kg)':m.t=='use'||m.t=='exp'?-m.q:m.q,Note:m.note}))),'Movements');
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(S.moves.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(m=>({Date:dshow(m.date),Type:NAMES[m.t],Client:B[m.b]?.client,Seasoning:B[m.b]?.item,Batch:B[m.b]?.batch,'For client':m.t=='use'?(m.fc||B[m.b]?.client):'','Qty (kg)':m.t=='use'||m.t=='exp'?-m.q:m.q,Note:m.note}))),'Movements');
  const name='Seasonings_Stock_'+today()+'.xlsx',blob=new Blob([XLSX.write(wb,{bookType:'xlsx',type:'array'})],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000)};
 render();status();
