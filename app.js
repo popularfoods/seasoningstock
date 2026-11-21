@@ -33,7 +33,7 @@ function renderTop(){
  const mv=t=>S.moves.filter(m=>m.t==t&&m.date>w).reduce((s,m)=>s+m.q,0);
  $('#figs').innerHTML=[[fmt(sum(live)),'kg','On hand'],[live.length,'','Live batches'],[fmt(sum(expd)),'kg','Expired, still in store',expd.length],[fmt(sum(soon)),'kg','Expiring in 30 days'],[fmt(mv('in')),'kg','Received, last 7 days'],[fmt(mv('use')),'kg','Used, last 7 days']]
   .map(([v,u,l,bad])=>`<div class="fig${bad?' bad':''}"><b>${v}<small>${u}</small></b><span>${l}</span></div>`).join('');
- $('#sub').textContent='Popular Essentials · Quality & Food Safety · '+dshow(today())+' · '+clients().length+' clients';
+ $('#sub').textContent='Popular Essentials · Quality & Food Safety · '+dshow(today())+' · '+clients().length+' clients'+(S.lastSheet?' · Google Sheet synced '+new Date(S.lastSheet).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'');
  const al=[];
  const ex=expd.sort((a,b)=>stock(b)-stock(a)),exs=U.allx?ex:ex.slice(0,6);
  if(expd.length)al.push(`<div class="al red"><strong>Expired, still in stock</strong>${exs.map(b=>`<button class="pill" data-wo="${b.id}">${esc(b.item)} · ${esc(b.client)} · ${fmt(stock(b))} kg — write off</button>`).join('')}${ex.length>6?`<button class="x" data-allx="1">${U.allx?'show fewer':'+'+(ex.length-6)+' more'}</button>`:''}</div>`);
@@ -49,15 +49,16 @@ function renderBatches(){
  const rows=U.empty?vis():vis().filter(b=>stock(b)>0);
  rows.sort((a,b)=>a.client.localeCompare(b.client)||key(a.item).localeCompare(key(b.item))||(effExp(a)||'9').localeCompare(effExp(b)||'9'));
  if(!rows.length)return CFG.url?'<div class="empty">No batches here. Use <b>Receive stock</b> to add one.</div>':'<div class="empty">Not signed in yet. Tap <b>Connection</b> above.</div>';
- const inp=(b,f,cls='',type='text')=>`<input class="${cls}" type="${type}" data-b="${b.id}" data-f="${f}" value="${esc(b[f])}" aria-label="${f}">`;
+ const inp=(b,f,cls='',type='text')=>`<input class="${cls}" type="${type}" data-b="${b.id}" data-f="${f}" value="${esc(b[f])}" aria-label="${f}"${b.src?' readonly title="From the Google Sheet — change it there"':''}>`;
  return`<table><thead><tr>${U.client=='All'?'<th>Client</th>':''}<th>Seasoning</th><th>Base</th><th>Supplier</th><th>Product code</th><th>Batch</th><th>MFG</th><th>EXP</th><th></th><th class="n">Opening</th><th class="n">In</th><th class="n">Used</th><th class="n">Written off</th><th class="n">Closing</th><th>Quick</th><th>Remark</th></tr></thead><tbody>${rows.map(b=>{const c=C[b.id];return`<tr class="${c.close>0?'':'dead'}">${U.client=='All'?`<td>${esc(b.client)}</td>`:''}<td>${inp(b,'item','w')}</td><td>${inp(b,'base')}</td><td>${inp(b,'supplier')}</td><td>${inp(b,'code')}</td><td>${inp(b,'batch')}</td><td>${inp(b,'mfg','','date')}</td><td>${inp(b,'exp','','date')}</td><td>${chip(b)}</td><td class="n">${inp(b,'opening','','number')}</td><td class="n">${c.in?fmt(c.in):''}</td><td class="n">${c.use?fmt(c.use):''}</td><td class="n">${c.exp?fmt(c.exp):''}</td><td class="n c">${fmt(c.close)}</td><td><div class="rb"><button title="Receive into this batch" data-row="in" data-id="${b.id}">+</button><button title="Use in production" data-row="use" data-id="${b.id}">−</button><button title="Write off" data-row="exp" data-id="${b.id}">×</button></div></td><td>${inp(b,'remark')}</td></tr>`}).join('')}</tbody></table>`}
 const ikey=(c,i)=>c+'|'+key(i);
 function summary(list){const IT=S.items||{},g={};
  for(const b of list){const s=b.grp&&IT[b.grp];const k=s?b.grp:ikey(b.client,b.item);
   (g[k]??=(s?{id:k,item:s.item,client:s.client,sort:+s.sort||9999,inSum:true,bs:[]}:{id:k,item:b.item,client:b.client,sort:1e6,inSum:false,bs:[]})).bs.push(b)}
+ if(U.client=='All'&&!U.q)for(const[id,s]of Object.entries(IT))if(s.sort!=null&&s.sort!==''&&!g[id]&&id.startsWith('sum:'))g[id]={id,item:s.item,client:s.client,sort:+s.sort,inSum:true,bs:[],only:+s.sq||0};
  const isExp=b=>effExp(b)&&days(effExp(b))<0;
  return Object.values(g).map(x=>{const live=x.bs.filter(b=>stock(b)>0).sort((a,b)=>(effExp(a)||'9').localeCompare(effExp(b)||'9')),it=IT[x.id]||{};
-  const kg=live.reduce((s,b)=>s+stock(b),0),bad=live.filter(isExp).reduce((s,b)=>s+stock(b),0),good=kg-bad;
+  const kg=live.reduce((s,b)=>s+stock(b),0)+(x.only||0),bad=live.filter(isExp).reduce((s,b)=>s+stock(b),0),good=kg-bad;
   const fg=it.fg!==''&&it.fg!=null?+it.fg:(it.pct?good*100/it.pct:null);
   return{...x,live,kg,bad,good,fg,fgTyped:it.fg!==''&&it.fg!=null,remark:it.remark||'',auto:bad>0?(good>0?fmt(bad)+' kg expired':'Expired'):''}})
   .sort((a,b)=>a.sort-b.sort||a.client.localeCompare(b.client)||key(a.item).localeCompare(key(b.item)))}
@@ -65,8 +66,8 @@ function renderItems(){
  const rows=summary(vis());if(!rows.length)return'<div class="empty">Nothing matches.</div>';
  const att=r=>`data-it="${esc(r.id)}" data-cl="${esc(r.client)}" data-nm="${esc(r.item)}"`;
  const grp=r=>{const lines=r.live.length?r.live:[null];
-  return lines.map((b,k)=>`<tr class="${r.kg>0?'':'dead'}">${k==0?`<td class="n">${r.inSum?r.sort:''}</td><td><button class="lnk" data-item="${esc(r.item)}" data-cl="${esc(r.bs[0].client)}">${esc(r.item)}</button></td><td>${esc(r.client)}</td>`:'<td></td><td></td><td></td>'}
-   ${b?`<td>${esc(b.batch)||'<span class="mut">no batch no.</span>'}</td><td>${dshow(effExp(b))} ${chip(b)}</td><td class="n">${fmt(stock(b))}</td>`:'<td colspan="3" class="mut">No stock</td>'}<td></td><td></td></tr>`).join('')
+  return lines.map((b,k)=>`<tr class="${r.kg>0?'':'dead'}">${k==0?`<td class="n">${r.inSum?r.sort:''}</td><td><button class="lnk" data-item="${esc(r.item)}" data-cl="${esc(r.bs[0]?.client||"")}">${esc(r.item)}</button></td><td>${esc(r.client)}</td>`:'<td></td><td></td><td></td>'}
+   ${b?`<td>${esc(b.batch)||'<span class="mut">no batch no.</span>'}</td><td>${dshow(effExp(b))} ${chip(b)}</td><td class="n">${fmt(stock(b))}</td>`:(r.only?`<td colspan="2" class="mut">Only on the Summary sheet — no batch on any stock sheet</td><td class="n">${fmt(r.only)}</td>`:'<td colspan="3" class="mut">No stock</td>')}<td></td><td></td></tr>`).join('')
   +`<tr class="tot"><td></td><td colspan="2">Total – ${esc(r.item)}</td><td>${r.live.length} batch${r.live.length==1?'':'es'}</td><td></td><td class="n c">${fmt(r.kg)}</td>
    <td class="n"><input type="number" step="1" min="0" ${att(r)} data-f="fg" value="${r.fgTyped?r.fg:''}" placeholder="${r.fg!=null?fmt(r.fg):'–'}" aria-label="FG Qty"></td>
    <td>${r.auto?`<span class="chip ${r.good>0?'a':'r'}">${r.auto}</span> `:''}<input ${att(r)} data-f="remark" value="${esc(r.remark)}" placeholder="Remark" aria-label="Remark"></td></tr>`};
@@ -105,8 +106,8 @@ async function fetchAll(t,f){let out=[],from=0;for(;;){let q=client().from(t).se
 const toRow=b=>({id:b.id,grp:b.grp||'',client:b.client,item:b.item,base:b.base||'',supplier:b.supplier||'',code:b.code||'',batch:b.batch||'',mfg:nz(b.mfg),exp:nz(b.exp),ext:nz(b.ext),opening:+b.opening||0,remark:b.remark||''});
 const moveRow=m=>({id:m.id,date:m.date,batch_id:m.b,type:m.t,qty:+m.q,note:m.note||'',...(m.fc?{for_client:m.fc}:{}),deleted:false,deleted_at:null});
 const API={
- async all(){const[b,m,f,it]=await Promise.all([fetchAll('batches'),fetchAll('movements',q=>q.eq('deleted',false)),fetchAll('flags',q=>q.eq('done',false)),fetchAll('items').catch(()=>[])]);
-  return{batches:b.map(x=>({...toRow(x),mfg:ez(x.mfg),exp:ez(x.exp),ext:ez(x.ext)})),moves:m.map(x=>({id:x.id,date:x.date,b:x.batch_id,t:x.type,q:+x.qty,note:x.note||'',fc:x.for_client||'',ca:x.created_at||''})),flags:f.map(x=>x.text),items:Object.fromEntries(it.map(x=>[x.id,{client:x.client,item:x.item,pct:x.pct==null?'':+x.pct,fg:x.fg==null?'':+x.fg,remark:x.remark||'',sort:x.sort}]))}},
+ async all(){const[b,m,f,it,sl]=await Promise.all([fetchAll('batches'),fetchAll('movements',q=>q.eq('deleted',false)),fetchAll('flags',q=>q.eq('done',false)),fetchAll('items').catch(()=>[]),client().from('sync_log').select('ran_at').order('id',{ascending:false}).limit(1).then(r=>r.data||[],()=>[])]);
+  return{lastSheet:sl[0]?.ran_at||'',batches:b.map(x=>({...toRow(x),src:!!x.src_key,mfg:ez(x.mfg),exp:ez(x.exp),ext:ez(x.ext)})),moves:m.map(x=>({id:x.id,date:x.date,b:x.batch_id,t:x.type,q:+x.qty,note:x.note||'',fc:x.for_client||'',ca:x.created_at||''})),flags:f.map(x=>x.text),items:Object.fromEntries(it.map(x=>[x.id,{client:x.client,item:x.item,pct:x.pct==null?'':+x.pct,fg:x.fg==null?'':+x.fg,remark:x.remark||'',sort:x.sort,sq:x.sheet_qty==null?'':+x.sheet_qty}]))}},
  async addMove(p){const c=client();if(p.batch)chk(await c.from('batches').upsert(toRow(p.batch),{onConflict:'id',ignoreDuplicates:true}));chk(await c.from('movements').upsert(moveRow(p.move),{onConflict:'id'}))},
  async deleteMove(p){chk(await client().from('movements').update({deleted:true,deleted_at:new Date().toISOString()}).eq('id',p.id))},
  async updateBatch(p){const v=['mfg','exp','ext'].includes(p.f)?nz(p.v):p.f=='opening'?(+p.v||0):(p.v??'');chk(await client().from('batches').update({[p.f]:v}).eq('id',p.id))},
@@ -139,7 +140,7 @@ const SF=$('#sf');
 async function showSetup(msg){SF.email.value=SF.email.value||lsGet('ss-email','');$('#smsg').className=msg&&!/^Signed in/.test(msg)?'bad':'';$('#smsg').textContent=msg||'';
  let email='';try{const c=client();if(c){const{data}=await c.auth.getSession();email=data.session?.user?.email||''}}catch(e){}
  $('#who').textContent=email?'Signed in as '+email:'';$('#signout').hidden=!email;
- $('#imp').hidden=!(email&&!S.batches.length);$('#setup').hidden=false}
+ $('#imp').hidden=!(email&&!S.batches.length&&!S.lastSheet);$('#setup').hidden=false}
 SF.addEventListener('submit',async e=>{e.preventDefault();const email=SF.email.value.trim(),pw=SF.pw.value;
  const msg=(t,bad)=>{$('#smsg').className=bad?'bad':'';$('#smsg').textContent=t};
  if(!window.supabase)return msg('Could not load the database library — check your internet connection.',1);
@@ -147,7 +148,7 @@ SF.addEventListener('submit',async e=>{e.preventDefault();const email=SF.email.v
  try{const r=await client().auth.signInWithPassword({email,password:pw});if(r.error)throw r.error;
   SF.pw.value='';const j=await call('all',{});S=j;Q.forEach(apply);lsSet('ss-cache',S);lastSync=new Date();render();status();goLive();
   $('#who').textContent='Signed in as '+email;$('#signout').hidden=false;
-  if(!S.batches.length){msg('Signed in. The database is empty — import your starting stock below. If you expected data, check your email is in the members list.');$('#imp').hidden=false}
+  if(!S.batches.length){msg(S.lastSheet?'Signed in.':'Signed in. No stock yet — it arrives with the first Google Sheet sync.');if(!S.lastSheet)$('#imp').hidden=false;if(S.lastSheet)setTimeout(()=>$('#setup').hidden=true,900)}
   else{msg(`Signed in — ${S.batches.length} batches loaded.`);setTimeout(()=>$('#setup').hidden=true,900)}flush()}
  catch(err){msg(/invalid login/i.test(err.message||'')?'Wrong email or password.':err.perm?'Signed in, but the database is missing permissions ('+err.message+'). Run the grant SQL in Supabase, then tap Sign in again.':'Could not connect: '+(err.message||err),1)}});
 $('#impf').onchange=async e=>{const f=e.target.files[0];if(!f)return;$('#smsg').className='';$('#smsg').textContent='Importing…';
