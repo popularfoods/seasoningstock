@@ -28,10 +28,12 @@ create table if not exists public.batches (
   ext        date,                       -- shelf-life extension
   opening    numeric not null default 0,
   remark     text not null default '',
+  grp        text not null default '',     -- which Summary line this batch adds up into
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   updated_by uuid default auth.uid()
 );
+alter table public.batches add column if not exists grp text not null default '';
 
 create table if not exists public.movements (
   id         text primary key,           -- made by the app, so a retried save is never counted twice
@@ -50,15 +52,19 @@ alter table public.movements add column if not exists for_client text not null d
 create index if not exists movements_batch_idx on public.movements (batch_id);
 create index if not exists movements_date_idx  on public.movements (date);
 
--- per-product settings for the Summary: seasoning % (for estimated FG output) and a remark
+-- Summary lines: name, client label, FG Qty, remark, order. Batches point here through batches.grp
 create table if not exists public.items (
   id         text primary key,             -- client|seasoning name (lowercase)
   client     text not null,
   item       text not null,
   pct        numeric check (pct is null or (pct > 0 and pct <= 100)),
+  fg         numeric,                    -- FG Qty (kg), typed in for now
   remark     text not null default '',
+  sort       integer,                    -- order on the Summary
   updated_at timestamptz not null default now()
 );
+alter table public.items add column if not exists fg numeric;
+alter table public.items add column if not exists sort integer;
 
 create table if not exists public.flags (
   text text primary key,
