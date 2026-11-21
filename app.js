@@ -4,7 +4,7 @@ $('#root').innerHTML=$('#shell').innerHTML;
 let LS=null;try{LS=window.localStorage;LS.getItem('x')}catch(e){LS=null}
 const lsGet=(k,d)=>{try{const v=LS&&LS.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}};
 const lsSet=(k,v)=>{try{LS&&LS.setItem(k,JSON.stringify(v))}catch(e){}};
-let CFG=lsGet('ss-cfg',{api:'',key:''});
+let CFG=lsGet('ss-cfg',{url:'',anon:''});
 let S=lsGet('ss-cache',{batches:[],moves:[],flags:[]});
 let Q=lsGet('ss-queue',[]);
 const U=Object.assign({client:'All',q:'',view:'batches',empty:false},lsGet('ss-ui',{}),{q:''});
@@ -47,7 +47,7 @@ function renderTop(){
 function renderBatches(){
  const rows=U.empty?vis():vis().filter(b=>stock(b)>0);
  rows.sort((a,b)=>a.client.localeCompare(b.client)||key(a.item).localeCompare(key(b.item))||(effExp(a)||'9').localeCompare(effExp(b)||'9'));
- if(!rows.length)return CFG.api?'<div class="empty">No batches here. Use <b>Receive stock</b> to add one.</div>':'<div class="empty">Not connected to the Google Sheet yet. Tap <b>Connection</b> above.</div>';
+ if(!rows.length)return CFG.url?'<div class="empty">No batches here. Use <b>Receive stock</b> to add one.</div>':'<div class="empty">Not signed in yet. Tap <b>Connection</b> above.</div>';
  const inp=(b,f,cls='',type='text')=>`<input class="${cls}" type="${type}" data-b="${b.id}" data-f="${f}" value="${esc(b[f])}" aria-label="${f}">`;
  return`<table><thead><tr>${U.client=='All'?'<th>Client</th>':''}<th>Seasoning</th><th>Base</th><th>Supplier</th><th>Product code</th><th>Batch</th><th>MFG</th><th>EXP</th><th></th><th class="n">Opening</th><th class="n">In</th><th class="n">Used</th><th class="n">Written off</th><th class="n">Closing</th><th>Quick</th><th>Remark</th></tr></thead><tbody>${rows.map(b=>{const c=C[b.id];return`<tr class="${c.close>0?'':'dead'}">${U.client=='All'?`<td>${esc(b.client)}</td>`:''}<td>${inp(b,'item','w')}</td><td>${inp(b,'base')}</td><td>${inp(b,'supplier')}</td><td>${inp(b,'code')}</td><td>${inp(b,'batch')}</td><td>${inp(b,'mfg','','date')}</td><td>${inp(b,'exp','','date')}</td><td>${chip(b)}</td><td class="n">${inp(b,'opening','','number')}</td><td class="n">${c.in?fmt(c.in):''}</td><td class="n">${c.use?fmt(c.use):''}</td><td class="n">${c.exp?fmt(c.exp):''}</td><td class="n c">${fmt(c.close)}</td><td><div class="rb"><button title="Receive into this batch" data-row="in" data-id="${b.id}">+</button><button title="Use in production" data-row="use" data-id="${b.id}">−</button><button title="Write off" data-row="exp" data-id="${b.id}">×</button></div></td><td>${inp(b,'remark')}</td></tr>`}).join('')}</tbody></table>`}
 function renderItems(){
@@ -63,53 +63,81 @@ function renderLog(){
  if(!ms.length)return'<div class="empty">No movements yet. Every receipt, use and write-off will be listed here.</div>';
  return`<table><thead><tr><th>Date</th><th>Type</th><th>Client</th><th>Seasoning</th><th>Batch</th><th class="n">Qty (kg)</th><th>Note</th><th></th></tr></thead><tbody>${ms.map(m=>{const b=B[m.b];return`<tr><td>${dshow(m.date)}</td><td><span class="t ${m.t}">${NAMES[m.t]}</span></td><td>${esc(b.client)}</td><td>${esc(b.item)}</td><td>${esc(b.batch)}</td><td class="n c">${m.t=='use'||m.t=='exp'?'−':m.q>0?'+':''}${fmt(m.q)}</td><td>${esc(m.note)}</td><td><button class="x" data-del="${m.id}">delete</button></td></tr>`}).join('')}</tbody></table>`}
 function render(){calc();renderTop();$('#view').innerHTML=U.view=='items'?renderItems():U.view=='log'?renderLog():renderBatches();try{LS&&LS.setItem('ss-ui',JSON.stringify({client:U.client,view:U.view,empty:U.empty}))}catch(e){}}
-/* sync with Google Sheet: every change is an op, queued in this browser until the sheet confirms it */
-let busy=false,fails=0,retryT=null,lastSync=null,offline=false;
+/* sync with Supabase: every change is an op with its own id, queued in this browser until the database confirms it */
+let busy=false,fails=0,retryT=null,lastSync=null,offline=false,sb=null,live=null,who='';
 function status(){const el=$('#save');el.className='';
- if(!CFG.api){el.textContent='Not connected';el.className='warn';return}
+ if(!CFG.url){el.textContent='Not connected';el.className='warn';return}
  if(Q.length){el.textContent=`${Q.length} change${Q.length>1?'s':''} waiting to sync${fails?' — retrying':''}`;el.className='warn';return}
  if(offline){el.textContent='Offline — showing last saved copy';el.className='warn';return}
- el.textContent=lastSync?'Saved to Google Sheet · '+lastSync.toTimeString().slice(0,5):'Connecting…'}
+ el.textContent=lastSync?'Saved · '+lastSync.toTimeString().slice(0,5):'Connecting…'}
 function apply(op){const p=op.p;
  if(op.a=='addMove'){if(p.batch&&!S.batches.some(b=>b.id==p.batch.id))S.batches.push({...p.batch});if(!S.moves.some(m=>m.id==p.move.id))S.moves.push({...p.move})}
  else if(op.a=='deleteMove')S.moves=S.moves.filter(m=>m.id!=p.id);
  else if(op.a=='updateBatch'){const b=S.batches.find(x=>x.id==p.id);if(b)b[p.f]=p.v}
  else if(op.a=='dismissFlag')S.flags=S.flags.filter(f=>f!=p.text)}
-function act(a,p){if(!CFG.api){showSetup();return false}const op={id:uid(),a,p};apply(op);Q.push(op);lsSet('ss-queue',Q);lsSet('ss-cache',S);render();flush();return true}
-async function call(a,p){
- const r=await fetch(CFG.api,{method:'POST',body:JSON.stringify({key:CFG.key,a,p})});
- if(!r.ok)throw new Error('HTTP '+r.status);
- const j=await r.json();
- if(!j.ok){const e=new Error(j.error||'error');e.fatal=j.error=='bad_key';e.drop=!!j.drop;throw e}
- return j}
-async function flush(){if(busy||!CFG.api)return;busy=true;status();
- try{while(Q.length){try{await call(Q[0].a,Q[0].p)}catch(e){if(!e.drop)throw e;toast('The sheet refused a change: '+e.message)}Q.shift();lsSet('ss-queue',Q);fails=0;offline=false}
+function act(a,p){if(!CFG.url){showSetup();return false}const op={id:uid(),a,p};apply(op);Q.push(op);lsSet('ss-queue',Q);lsSet('ss-cache',S);render();flush();return true}
+function client(){if(!CFG.url||!window.supabase)return null;if(!sb)sb=window.supabase.createClient(CFG.url,CFG.anon,{auth:{persistSession:true,autoRefreshToken:true,storageKey:'ss-auth'}});return sb}
+const nz=v=>v===''||v==null?null:v,ez=v=>v==null?'':String(v);
+function chk(r){if(r&&r.error){const c=String(r.error.code||''),msg=r.error.message||'error',e=new Error(msg);
+ e.fatal=c=='PGRST301'||c=='42501'||r.status==401||/jwt|not authenticated|row-level security/i.test(msg);
+ e.drop=!e.fatal&&/^(22|23)/.test(c);throw e}return r.data}
+async function fetchAll(t,f){let out=[],from=0;for(;;){let q=client().from(t).select('*').order(t=='flags'?'text':'id').range(from,from+999);if(f)q=f(q);const d=chk(await q)||[];out=out.concat(d);if(d.length<1000)return out;from+=1000}}
+const toRow=b=>({id:b.id,client:b.client,item:b.item,base:b.base||'',supplier:b.supplier||'',code:b.code||'',batch:b.batch||'',mfg:nz(b.mfg),exp:nz(b.exp),ext:nz(b.ext),opening:+b.opening||0,remark:b.remark||''});
+const moveRow=m=>({id:m.id,date:m.date,batch_id:m.b,type:m.t,qty:+m.q,note:m.note||'',deleted:false,deleted_at:null});
+const API={
+ async all(){const[b,m,f]=await Promise.all([fetchAll('batches'),fetchAll('movements',q=>q.eq('deleted',false)),fetchAll('flags',q=>q.eq('done',false))]);
+  return{batches:b.map(x=>({...toRow(x),mfg:ez(x.mfg),exp:ez(x.exp),ext:ez(x.ext)})),moves:m.map(x=>({id:x.id,date:x.date,b:x.batch_id,t:x.type,q:+x.qty,note:x.note||''})),flags:f.map(x=>x.text)}},
+ async addMove(p){const c=client();if(p.batch)chk(await c.from('batches').upsert(toRow(p.batch),{onConflict:'id',ignoreDuplicates:true}));chk(await c.from('movements').upsert(moveRow(p.move),{onConflict:'id'}))},
+ async deleteMove(p){chk(await client().from('movements').update({deleted:true,deleted_at:new Date().toISOString()}).eq('id',p.id))},
+ async updateBatch(p){const v=['mfg','exp','ext'].includes(p.f)?nz(p.v):p.f=='opening'?(+p.v||0):(p.v??'');chk(await client().from('batches').update({[p.f]:v}).eq('id',p.id))},
+ async dismissFlag(p){chk(await client().from('flags').update({done:true}).eq('text',p.text))},
+ async importAll(p){const c=client(),r=await c.from('batches').select('id',{count:'exact',head:true});chk(r);
+  if(r.count>0)throw new Error('The database already has batches — import is only for an empty database');
+  const put=async(t,rows,opt)=>{for(let i=0;i<rows.length;i+=500)chk(await c.from(t).upsert(rows.slice(i,i+500),opt))};
+  await put('batches',p.batches.map(toRow),{onConflict:'id'});
+  await put('movements',p.moves.map(moveRow),{onConflict:'id'});
+  await put('flags',p.flags.map(t=>({text:t,done:false})),{onConflict:'text',ignoreDuplicates:true});
+  return{imported:{batches:p.batches.length,moves:p.moves.length,flags:p.flags.length}}}};
+async function call(a,p){if(!client()){const e=new Error(window.supabase?'Not connected':'Could not load the database library — check your connection');e.fatal=!!window.supabase;throw e}return API[a](p)}
+async function flush(){if(busy||!CFG.url)return;busy=true;status();
+ try{while(Q.length){try{await call(Q[0].a,Q[0].p)}catch(e){if(!e.drop)throw e;toast('The database refused a change: '+e.message)}Q.shift();lsSet('ss-queue',Q);fails=0;offline=false}
   busy=false;await pull(true)}
- catch(e){busy=false;fails++;if(e.fatal){showSetup('The team key was refused. Check it in Apps Script → setup logs.')}else{offline=true;clearTimeout(retryT);retryT=setTimeout(flush,Math.min(60000,2000*2**fails))}}
+ catch(e){busy=false;fails++;if(e.fatal){showSetup('Please sign in again.')}else{offline=true;clearTimeout(retryT);retryT=setTimeout(flush,Math.min(60000,2000*2**fails))}}
  status()}
-async function pull(force){if(!CFG.api||busy)return;if(Q.length&&!force)return flush();busy=true;
- try{const j=await call('all',{});S={batches:j.batches,moves:j.moves,flags:j.flags};Q.forEach(apply);lsSet('ss-cache',S);lastSync=new Date();offline=false;render()}
- catch(e){if(e.fatal)showSetup('The team key was refused.');else offline=true}
+async function pull(force){if(!CFG.url||busy)return;if(Q.length&&!force)return flush();busy=true;
+ try{const j=await call('all',{});S=j;Q.forEach(apply);lsSet('ss-cache',S);lastSync=new Date();offline=false;render()}
+ catch(e){if(e.fatal)showSetup('Please sign in again.');else offline=true}
  busy=false;status()}
-setInterval(()=>{if(document.visibilityState=='visible')Q.length?flush():pull()},45000);
+let liveT;
+function goLive(){const c=client();if(!c||live)return;try{live=c.channel('stock').on('postgres_changes',{event:'*',schema:'public'},()=>{clearTimeout(liveT);liveT=setTimeout(()=>Q.length?flush():pull(),700)}).subscribe()}catch(e){}}
+setInterval(()=>{if(document.visibilityState=='visible')Q.length?flush():pull()},60000);
 addEventListener('focus',()=>pull());addEventListener('online',()=>flush());
-/* setup */
+/* connection + sign-in */
 const SF=$('#sf');
-function showSetup(msg){SF.api.value=CFG.api;SF.key.value=CFG.key;$('#smsg').className=msg?'bad':'';$('#smsg').textContent=msg||'';$('#imp').hidden=!(CFG.api&&!S.batches.length);$('#setup').hidden=false}
-SF.addEventListener('submit',async e=>{e.preventDefault();const api=SF.api.value.trim(),k=SF.key.value.trim();
- if(!/^https:\/\/script\.google(usercontent)?\.com\//.test(api)){$('#smsg').className='bad';$('#smsg').textContent='That should be a script.google.com Web app URL ending in /exec.';return}
- $('#smsg').className='';$('#smsg').textContent='Connecting…';const old=CFG;CFG={api,key:k};
- try{const j=await call('all',{});lsSet('ss-cfg',CFG);S={batches:j.batches,moves:j.moves,flags:j.flags};Q.forEach(apply);lsSet('ss-cache',S);lastSync=new Date();render();status();
-  $('#smsg').textContent=S.batches.length?`Connected — ${S.batches.length} batches loaded.`:'Connected. The sheet is empty.';$('#imp').hidden=!!S.batches.length;if(S.batches.length)setTimeout(()=>$('#setup').hidden=true,900);flush()}
- catch(err){CFG=old;$('#smsg').className='bad';$('#smsg').textContent=err.fatal?'Team key refused.':'Could not reach the sheet. Check the URL and that the web app is deployed with access "Anyone".'}});
+async function showSetup(msg){SF.url.value=CFG.url;SF.anon.value=CFG.anon;$('#smsg').className=msg&&!/^Signed in/.test(msg)?'bad':'';$('#smsg').textContent=msg||'';
+ let email='';try{const c=client();if(c){const{data}=await c.auth.getSession();email=data.session?.user?.email||''}}catch(e){}
+ $('#who').textContent=email?'Signed in as '+email:'';$('#signout').hidden=!email;
+ $('#imp').hidden=!(email&&!S.batches.length);$('#setup').hidden=false}
+SF.addEventListener('submit',async e=>{e.preventDefault();const url=SF.url.value.trim().replace(/\/+$/,''),anon=SF.anon.value.trim(),email=SF.email.value.trim(),pw=SF.pw.value;
+ const msg=(t,bad)=>{$('#smsg').className=bad?'bad':'';$('#smsg').textContent=t};
+ if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(url))return msg('Project URL should look like https://abcd1234.supabase.co',1);
+ if(!window.supabase)return msg('Could not load the database library — check your internet connection.',1);
+ msg('Signing in…');if(url!=CFG.url||anon!=CFG.anon){sb=null;live=null}const old=CFG;CFG={url,anon};
+ try{const r=await client().auth.signInWithPassword({email,password:pw});if(r.error)throw r.error;
+  lsSet('ss-cfg',CFG);SF.pw.value='';const j=await call('all',{});S=j;Q.forEach(apply);lsSet('ss-cache',S);lastSync=new Date();render();status();goLive();
+  $('#who').textContent='Signed in as '+email;$('#signout').hidden=false;
+  if(!S.batches.length){msg('Signed in. The database is empty — import your starting stock below. If you expected data, check your email is in the members list.');$('#imp').hidden=false}
+  else{msg(`Signed in — ${S.batches.length} batches loaded.`);setTimeout(()=>$('#setup').hidden=true,900)}flush()}
+ catch(err){CFG=old;sb=null;msg(/invalid login/i.test(err.message||'')?'Wrong email or password.':'Could not connect: '+(err.message||err),1)}});
 $('#impf').onchange=async e=>{const f=e.target.files[0];if(!f)return;$('#smsg').className='';$('#smsg').textContent='Importing…';
  try{const d=JSON.parse(await f.text());if(!Array.isArray(d.batches))throw new Error('Not a stock file');const j=await call('importAll',{batches:d.batches,moves:d.moves||[],flags:d.flags||[]});
-  $('#smsg').textContent=`Imported ${j.imported.batches} batches, ${j.imported.moves} movements.`;$('#imp').hidden=true;await pull(true);setTimeout(()=>$('#setup').hidden=true,1200)}
- catch(err){$('#smsg').className='bad';$('#smsg').textContent='Import failed: '+err.message}};
+  $('#smsg').textContent=`Imported ${j.imported.batches} batches and ${j.imported.moves} movements.`;$('#imp').hidden=true;await pull(true);setTimeout(()=>$('#setup').hidden=true,1200)}
+ catch(err){$('#smsg').className='bad';$('#smsg').textContent='Import failed: '+err.message}finally{e.target.value=''}};
 $('#sx').onclick=()=>$('#setup').hidden=true;
 $('#cfg').onclick=()=>showSetup();
-$('#forget').onclick=()=>{if(Q.length&&$('#forget').textContent!='Unsynced changes will be lost — tap again'){$('#forget').textContent='Unsynced changes will be lost — tap again';return}
- ['ss-cfg','ss-cache','ss-queue'].forEach(k=>{try{LS&&LS.removeItem(k)}catch(e){}});CFG={api:'',key:''};S={batches:[],moves:[],flags:[]};Q=[];render();status();showSetup('Disconnected. This browser no longer holds any stock data.')};
+$('#signout').onclick=async()=>{if(Q.length&&$('#signout').textContent!='Unsynced changes will be lost — tap again'){$('#signout').textContent='Unsynced changes will be lost — tap again';return}
+ try{await client()?.auth.signOut()}catch(e){}['ss-cache','ss-queue','ss-auth'].forEach(k=>{try{LS&&LS.removeItem(k)}catch(e){}});
+ S={batches:[],moves:[],flags:[]};Q=[];live=null;render();status();$('#signout').textContent='Sign out';showSetup('Signed out. This browser no longer holds any stock data.')};
 /* form */
 const F=$('#f');let ft='in';
 const nid=()=>uid();
@@ -179,5 +207,5 @@ $('#xl').onclick=async()=>{if(!window.XLSX){toast('Excel library did not load �
  const name='Seasonings_Stock_'+today()+'.xlsx',blob=new Blob([XLSX.write(wb,{bookType:'xlsx',type:'array'})],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000)};
 render();status();
-if(!CFG.api)showSetup();else if(Q.length)flush();else pull();
+(async()=>{let ok=false;try{const c=client();if(c){const{data}=await c.auth.getSession();ok=!!data.session}}catch(e){}if(!ok)showSetup(CFG.url?'Please sign in.':'');else{goLive();Q.length?flush():pull()}})();
 }

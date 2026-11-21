@@ -95,7 +95,7 @@ td input.w{min-width:170px}td input[type=number]{text-align:right;width:84px}
 #sf{background:var(--bg);width:min(540px,100%);border-radius:18px;padding:26px;display:grid;gap:14px;max-height:100%;overflow:auto}
 #sf h2{margin:0;font-size:28px;font-stretch:115%;font-weight:800;line-height:1.1}#sf h3{margin:8px 0 0}
 .lead{margin:0;color:var(--mut);font-size:15px}
-#sf label{display:grid;gap:4px;font-size:13px;font-weight:600;color:var(--mut)}
+#sf .g2 label,#sf label{display:grid;gap:4px;font-size:13px;font-weight:600;color:var(--mut)}
 #sf input{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px 12px;min-height:46px;font-size:16px;color:var(--ink)}
 #smsg{margin:0;font-size:14px;min-height:1.4em}#smsg.bad{color:var(--chili);font-weight:700}
 #sf .x{justify-self:start}
@@ -144,19 +144,21 @@ td input.w{min-width:170px}td input[type=number]{text-align:right;width:84px}
  <div class="fb"><button class="go" type="submit">Save</button><button class="cancel" type="button" id="fx">Cancel</button></div>
  <datalist id="dl-c"></datalist><datalist id="dl-i"></datalist><datalist id="dl-s"></datalist>
 </form></div>
-<div id="setup" hidden><form id="sf" autocomplete="off">
- <h2>Connect your Google Sheet</h2>
- <p class="lead">Paste the Web app URL and team key from the Apps Script setup. They're saved only in this browser — never in the code.</p>
- <label>Web app URL<input name="api" type="url" required placeholder="https://script.google.com/macros/s/…/exec"></label>
- <label>Team key<input name="key" required autocomplete="off"></label>
+<div id="setup" hidden><form id="sf" autocomplete="on">
+ <h2>Connect &amp; sign in</h2>
+ <p class="lead">Your stock lives in your own Supabase database. These details are saved only in this browser, never in the code.</p>
+ <label>Project URL<input name="url" type="url" required placeholder="https://abcd1234.supabase.co" autocomplete="off"></label>
+ <label>Anon public key<input name="anon" required autocomplete="off" placeholder="eyJhbGciOi…"></label>
+ <div class="g2"><label>Email<input name="email" type="email" required autocomplete="username"></label><label>Password<input name="pw" type="password" required autocomplete="current-password"></label></div>
  <p id="smsg"></p>
- <div class="fb"><button class="go" type="submit">Connect</button><button class="cancel" type="button" id="sx">Close</button></div>
- <div id="imp" hidden><h3>Your sheet is empty</h3><p class="lead">Import your starting stock file (the .json file Claude sent you). This only works once, on an empty sheet.</p><input type="file" id="impf" accept=".json,application/json"></div>
- <button class="x" type="button" id="forget">Disconnect this browser</button>
+ <div class="fb"><button class="go" type="submit">Sign in</button><button class="cancel" type="button" id="sx">Close</button></div>
+ <div id="imp" hidden><h3>Database is empty</h3><p class="lead">Import your starting stock file (the .json file Claude sent you). Works once, on an empty database.</p><input type="file" id="impf" accept=".json,application/json"></div>
+ <p class="lead" id="who"></p><button class="x" type="button" id="signout" hidden>Sign out</button>
 </form></div>
 <div id="toast" hidden></div>
 </template>
 <div id="root"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
