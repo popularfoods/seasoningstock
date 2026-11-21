@@ -59,8 +59,9 @@ function summary(list){const IT=S.items||{},g={};
  const isExp=b=>effExp(b)&&days(effExp(b))<0;
  return Object.values(g).map(x=>{const live=x.bs.filter(b=>stock(b)>0).sort((a,b)=>(effExp(a)||'9').localeCompare(effExp(b)||'9')),it=IT[x.id]||{};
   const kg=live.reduce((s,b)=>s+stock(b),0)+(x.only||0),bad=live.filter(isExp).reduce((s,b)=>s+stock(b),0),good=kg-bad;
-  const fg=it.fg!==''&&it.fg!=null?+it.fg:(it.pct?good*100/it.pct:null);
-  return{...x,live,kg,bad,good,fg,fgTyped:it.fg!==''&&it.fg!=null,remark:it.remark||'',auto:bad>0?(good>0?fmt(bad)+' kg expired':'Expired'):''}})
+  const ln=Object.entries(S.ps||{}).find(([,s])=>s.stock_grp===x.id&&s.pct>0);
+  const fg=ln?good/ln[1].pct:it.fg!==''&&it.fg!=null?+it.fg:(it.pct?good*100/it.pct:null);
+  return{...x,live,kg,bad,good,fg,fgAuto:ln?ln[0]+' · '+Math.round(ln[1].pct*10000)/100+'%':'',fgTyped:!ln&&it.fg!==''&&it.fg!=null,remark:it.remark||'',auto:bad>0?(good>0?fmt(bad)+' kg expired':'Expired'):''}})
   .sort((a,b)=>a.sort-b.sort||a.client.localeCompare(b.client)||key(a.item).localeCompare(key(b.item)))}
 function renderItems(){
  const rows=summary(vis());if(!rows.length)return'<div class="empty">Nothing matches.</div>';
@@ -69,7 +70,7 @@ function renderItems(){
   return lines.map((b,k)=>`<tr class="${r.kg>0?'':'dead'}">${k==0?`<td class="n">${r.inSum?r.sort:''}</td><td><button class="lnk" data-item="${esc(r.item)}" data-cl="${esc(r.bs[0]?.client||"")}">${esc(r.item)}</button></td><td>${esc(r.client)}</td>`:'<td></td><td></td><td></td>'}
    ${b?`<td>${esc(b.batch)||'<span class="mut">no batch no.</span>'}</td><td>${dshow(effExp(b))} ${chip(b)}</td><td class="n">${fmt(stock(b))}</td>`:(r.only?`<td colspan="2" class="mut">Only on the Summary sheet — no batch on any stock sheet</td><td class="n">${fmt(r.only)}</td>`:'<td colspan="3" class="mut">No stock</td>')}<td></td><td></td></tr>`).join('')
   +`<tr class="tot"><td></td><td colspan="2">Total – ${esc(r.item)}</td><td>${r.live.length} batch${r.live.length==1?'':'es'}</td><td></td><td class="n c">${fmt(r.kg)}</td>
-   <td class="n"><input type="number" step="1" min="0" ${att(r)} data-f="fg" value="${r.fgTyped?r.fg:''}" placeholder="${r.fg!=null?fmt(r.fg):'–'}" aria-label="FG Qty"></td>
+   <td class="n">${r.fgAuto?`<b>${fmt(Math.round(r.fg))}</b><br><span class="mut" title="Usable stock ÷ seasoning %">${esc(r.fgAuto)}</span>`:`<input type="number" step="1" min="0" ${att(r)} data-f="fg" value="${r.fgTyped?r.fg:''}" placeholder="${r.fg!=null?fmt(r.fg):'–'}" aria-label="FG Qty">`}</td>
    <td>${r.auto?`<span class="chip ${r.good>0?'a':'r'}">${r.auto}</span> `:''}<input ${att(r)} data-f="remark" value="${esc(r.remark)}" placeholder="Remark" aria-label="Remark"></td></tr>`};
  const inS=rows.filter(r=>r.inSum),oth=rows.filter(r=>!r.inSum),sum=(a,f)=>a.reduce((s,r)=>s+(f(r)||0),0);
  const gt=(label,a,cls)=>`<tr class="${cls}"><td></td><td colspan="2">${label}</td><td></td><td></td><td class="n c">${fmt(sum(a,r=>r.kg))}</td><td class="n c">${fmt(sum(a,r=>r.fg))}</td><td></td></tr>`;
@@ -82,7 +83,7 @@ function renderLog(){
  const ms=S.moves.filter(m=>ids.has(m.b)).sort((a,b)=>b.date.localeCompare(a.date)||(b.ca||'').localeCompare(a.ca||'')).slice(0,300);
  if(!ms.length)return'<div class="empty">No movements yet. Every receipt, use and write-off will be listed here.</div>';
  return`<table><thead><tr><th>Date</th><th>Type</th><th>Client</th><th>Seasoning</th><th>Batch</th><th>For client</th><th class="n">Qty (kg)</th><th>Note</th><th></th></tr></thead><tbody>${ms.map(m=>{const b=B[m.b];return`<tr><td>${dshow(m.date)}</td><td><span class="t ${m.t}">${NAMES[m.t]}</span></td><td>${esc(b.client)}</td><td>${esc(b.item)}</td><td>${esc(b.batch)}</td><td>${m.t=='use'?`<b>${esc(m.fc||b.client)}</b>`:''}</td><td class="n c">${m.t=='use'||m.t=='exp'?'−':m.q>0?'+':''}${fmt(m.q)}</td><td>${esc(m.note)}</td><td><button class="x" data-del="${m.id}">delete</button></td></tr>`}).join('')}</tbody></table>`}
-function render(){calc();renderTop();$('#view').innerHTML=U.view=='items'?renderItems():U.view=='log'?renderLog():renderBatches();try{LS&&LS.setItem('ss-ui',JSON.stringify({client:U.client,view:U.view,empty:U.empty}))}catch(e){}}
+function render(){calc();renderTop();$('#view').innerHTML=U.view=='proj'?renderProj():U.view=='items'?renderItems():U.view=='log'?renderLog():renderBatches();try{const h=U.view=='proj'?'#projections':'';if(location.hash!==h)history.replaceState(null,'',h||location.pathname)}catch(e){}try{LS&&LS.setItem('ss-ui',JSON.stringify({client:U.client,view:U.view,empty:U.empty}))}catch(e){}}
 /* sync with Supabase: every change is an op with its own id, queued in this browser until the database confirms it */
 let busy=false,fails=0,retryT=null,lastSync=null,offline=false,sb=null,live=null,who='';
 function status(){const el=$('#save');el.className='';
@@ -95,6 +96,10 @@ function apply(op){const p=op.p;
  else if(op.a=='deleteMove')S.moves=S.moves.filter(m=>m.id!=p.id);
  else if(op.a=='updateBatch'){const b=S.batches.find(x=>x.id==p.id);if(b)b[p.f]=p.v}
  else if(op.a=='setItem'){S.items=S.items||{};const it=S.items[p.id]=S.items[p.id]||{client:p.client,item:p.item,pct:'',fg:'',remark:''};it[p.f]=p.v}
+ else if(op.a=='setSeas'){S.ps=S.ps||{};(S.ps[p.name]??={pct:null,stock_grp:''})[p.f]=p.v}
+ else if(op.a=='setSku'){const s=(S.skus||[]).find(x=>x.id==p.id);if(s)s[p.f]=p.v}
+ else if(op.a=='setPlan'){S.plan=S.plan||{};S.plan[p.sku+'|'+p.month]=+p.v||0}
+ else if(op.a=='importProj'){S.ps=S.ps||{};S.skus=S.skus||[];S.plan=S.plan||{};for(const s of p.seas)S.ps[s.name]={pct:s.pct,stock_grp:s.stock_grp||''};for(const s of p.skus){const i=S.skus.findIndex(x=>x.id==s.id);if(i>=0)S.skus[i]={...S.skus[i],...s};else S.skus.push({...s})}for(const x of p.plan)S.plan[x.sku_id+'|'+x.month]=x.packets}
  else if(op.a=='dismissFlag')S.flags=S.flags.filter(f=>f!=p.text)}
 function act(a,p){if(!CFG.url){showSetup();return false}const op={id:uid(),a,p};apply(op);Q.push(op);lsSet('ss-queue',Q);lsSet('ss-cache',S);setTimeout(render);flush();return true}
 function client(){if(!CFG.url||!window.supabase)return null;if(!sb)sb=window.supabase.createClient(CFG.url,CFG.anon,{auth:{persistSession:true,autoRefreshToken:true,storageKey:'ss-auth'}});return sb}
@@ -102,16 +107,23 @@ const nz=v=>v===''||v==null?null:v,ez=v=>v==null?'':String(v);
 function chk(r){if(r&&r.error){const c=String(r.error.code||''),msg=r.error.message||'error',e=new Error(msg);
  e.fatal=c=='PGRST301'||r.status==401||/jwt|not authenticated/i.test(msg);e.perm=c=='42501'||/permission denied|row-level security/i.test(msg);
  e.drop=!e.fatal&&!e.perm&&/^(22|23)/.test(c);throw e}return r.data}
-async function fetchAll(t,f){let out=[],from=0;for(;;){let q=client().from(t).select('*').order(t=='flags'?'text':'id').range(from,from+999);if(f)q=f(q);const d=chk(await q)||[];out=out.concat(d);if(d.length<1000)return out;from+=1000}}
+async function fetchAll(t,f){let out=[],from=0;for(;;){let q=client().from(t).select('*').order(t=='flags'?'text':t=='p_seasonings'?'name':t=='p_plan'?'sku_id':'id').range(from,from+999);if(f)q=f(q);const d=chk(await q)||[];out=out.concat(d);if(d.length<1000)return out;from+=1000}}
 const toRow=b=>({id:b.id,grp:b.grp||'',client:b.client,item:b.item,base:b.base||'',supplier:b.supplier||'',code:b.code||'',batch:b.batch||'',mfg:nz(b.mfg),exp:nz(b.exp),ext:nz(b.ext),opening:+b.opening||0,remark:b.remark||''});
 const moveRow=m=>({id:m.id,date:m.date,batch_id:m.b,type:m.t,qty:+m.q,note:m.note||'',...(m.fc?{for_client:m.fc}:{}),deleted:false,deleted_at:null});
 const API={
- async all(){const[b,m,f,it,sl]=await Promise.all([fetchAll('batches'),fetchAll('movements',q=>q.eq('deleted',false)),fetchAll('flags',q=>q.eq('done',false)),fetchAll('items').catch(()=>[]),client().from('sync_log').select('ran_at').order('id',{ascending:false}).limit(1).then(r=>r.data||[],()=>[])]);
-  return{lastSheet:sl[0]?.ran_at||'',batches:b.map(x=>({...toRow(x),src:!!x.src_key,mfg:ez(x.mfg),exp:ez(x.exp),ext:ez(x.ext)})),moves:m.map(x=>({id:x.id,date:x.date,b:x.batch_id,t:x.type,q:+x.qty,note:x.note||'',fc:x.for_client||'',ca:x.created_at||''})),flags:f.map(x=>x.text),items:Object.fromEntries(it.map(x=>[x.id,{client:x.client,item:x.item,pct:x.pct==null?'':+x.pct,fg:x.fg==null?'':+x.fg,remark:x.remark||'',sort:x.sort,sq:x.sheet_qty==null?'':+x.sheet_qty}]))}},
+ async all(){const[b,m,f,it,ps,sk,pl,sl]=await Promise.all([fetchAll('batches'),fetchAll('movements',q=>q.eq('deleted',false)),fetchAll('flags',q=>q.eq('done',false)),fetchAll('items').catch(()=>[]),fetchAll('p_seasonings').catch(()=>[]),fetchAll('p_skus').catch(()=>[]),fetchAll('p_plan').catch(()=>[]),client().from('sync_log').select('ran_at').order('id',{ascending:false}).limit(1).then(r=>r.data||[],()=>[])]);
+  return{lastSheet:sl[0]?.ran_at||'',batches:b.map(x=>({...toRow(x),src:!!x.src_key,mfg:ez(x.mfg),exp:ez(x.exp),ext:ez(x.ext)})),moves:m.map(x=>({id:x.id,date:x.date,b:x.batch_id,t:x.type,q:+x.qty,note:x.note||'',fc:x.for_client||'',ca:x.created_at||''})),flags:f.map(x=>x.text),items:Object.fromEntries(it.map(x=>[x.id,{client:x.client,item:x.item,pct:x.pct==null?'':+x.pct,fg:x.fg==null?'':+x.fg,remark:x.remark||'',sort:x.sort,sq:x.sheet_qty==null?'':+x.sheet_qty}])),ps:Object.fromEntries(ps.map(x=>[x.name,{pct:x.pct==null?null:+x.pct,stock_grp:x.stock_grp||''}])),skus:sk.map(x=>({id:x.id,item_code:x.item_code,name:x.name,client:x.client,pack_kg:x.pack_kg==null?null:+x.pack_kg,seasonings:x.seasonings||[],sort:x.sort})),plan:Object.fromEntries(pl.map(x=>[x.sku_id+'|'+x.month,+x.packets]))}},
  async addMove(p){const c=client();if(p.batch)chk(await c.from('batches').upsert(toRow(p.batch),{onConflict:'id',ignoreDuplicates:true}));chk(await c.from('movements').upsert(moveRow(p.move),{onConflict:'id'}))},
  async deleteMove(p){chk(await client().from('movements').update({deleted:true,deleted_at:new Date().toISOString()}).eq('id',p.id))},
  async updateBatch(p){const v=['mfg','exp','ext'].includes(p.f)?nz(p.v):p.f=='opening'?(+p.v||0):(p.v??'');chk(await client().from('batches').update({[p.f]:v}).eq('id',p.id))},
  async setItem(p){const v=(p.f=='pct'||p.f=='fg')?(p.v===''||p.v==null?null:+p.v):(p.v||'');chk(await client().from('items').upsert({id:p.id,client:p.client,item:p.item,[p.f]:v,updated_at:new Date().toISOString()},{onConflict:'id'}))},
+ async setSeas(p){chk(await client().from('p_seasonings').upsert({name:p.name,[p.f]:p.v,updated_at:new Date().toISOString()},{onConflict:'name'}))},
+ async setSku(p){chk(await client().from('p_skus').update({[p.f]:p.v,updated_at:new Date().toISOString()}).eq('id',p.id))},
+ async setPlan(p){chk(await client().from('p_plan').upsert({sku_id:p.sku,month:p.month,packets:+p.v||0,updated_at:new Date().toISOString()},{onConflict:'sku_id,month'}))},
+ async importProj(p){const c=client(),put=async(t,rows,on)=>{for(let i=0;i<rows.length;i+=500)chk(await c.from(t).upsert(rows.slice(i,i+500),{onConflict:on}))};
+  await put('p_seasonings',p.seas.map(s=>({name:s.name,pct:s.pct,stock_grp:s.stock_grp||''})),'name');
+  await put('p_skus',p.skus.map(s=>({id:s.id,item_code:s.item_code||'',name:s.name,client:s.client||'',pack_kg:s.pack_kg||null,seasonings:s.seasonings,sort:s.sort})),'id');
+  await put('p_plan',p.plan.map(x=>({sku_id:x.sku_id,month:x.month,packets:x.packets})),'sku_id,month')},
  async dismissFlag(p){chk(await client().from('flags').update({done:true}).eq('text',p.text))},
  async importAll(p){const c=client(),r=await c.from('batches').select('id',{count:'exact',head:true});chk(r);
   if(r.count>0)throw new Error('The database already has batches — import is only for an empty database');
@@ -208,14 +220,100 @@ $('#ftype').onclick=e=>{const t=e.target.closest('[data-t]');if(t)setType(t.data
 $('#fall').onclick=()=>{const b=S.batches.find(x=>x.id==F.b.value);if(b){F.q.value=stock(b);hint()}};
 $('#fx').onclick=close;$('#sheet').onclick=e=>{if(e.target.id=='sheet')close()};
 document.addEventListener('keydown',e=>{if(e.key=='Escape'&&!$('#sheet').hidden)close()});
+/* ---------- Projections: seasoning needed for the production plan ---------- */
+const MONS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const r1=v=>Math.round(v*10)/10;
+const mlabel=m=>MONS[+m.slice(5,7)-1]+' '+m.slice(2,4);
+const pctS=p=>p==null||p===''?'':String(Math.round(p*10000)/100);
+const stopw=new Set(['seasoning','cl','tropical','aranyakam','the','and','of']);
+const toks=s=>new Set(key(s).replace(/[^a-z0-9 ]/g,' ').split(' ').filter(w=>w&&!stopw.has(w)));
+const near=(a,b)=>{if(a===b)return true;if(Math.abs(a.length-b.length)>1)return false;let i=0,j=0,d=0;while(i<a.length&&j<b.length){if(a[i]===b[j]){i++;j++}else{if(++d>1)return false;if(a.length>b.length)i++;else if(b.length>a.length)j++;else{i++;j++}}}return d+(a.length-i)+(b.length-j)<=1};
+const sameToks=(A,B)=>A.size&&A.size===B.size&&[...A].every(a=>[...B].some(b=>near(a,b)));
+/** best Summary line for a seasoning: same words (typos allowed), same client */
+function autoLink(name,client){const A=toks(name),c=key(client);
+ const hit=Object.entries(S.items||{}).find(([id,s])=>s.sort!=null&&s.sort!==''&&key(s.client).startsWith(c)&&sameToks(A,toks(s.item)));
+ return hit?hit[0]:''}
+function projData(){
+ const P=S.ps||{},skus=(S.skus||[]).slice().sort((a,b)=>(a.sort??999)-(b.sort??999)||a.id.localeCompare(b.id));
+ const months=[...new Set(Object.keys(S.plan||{}).map(k=>k.split('|')[1]))].sort();
+ const sum=Object.fromEntries(summary(S.batches).map(r=>[r.id,r]));
+ const need={};for(const sk of skus)for(const n of sk.seasonings||[]){const pc=P[n]?.pct;if(!pc)continue;need[n]??={};
+  for(const m of months){const pk=+(S.plan[sk.id+'|'+m]||0);need[n][m]=(need[n][m]||0)+pk*(+sk.pack_kg||0)*pc}}
+ const names=[...new Set([...Object.keys(P),...skus.flatMap(s=>s.seasonings||[])])].sort((a,b)=>{const ta=months.reduce((s,m)=>s+(need[a]?.[m]||0),0),tb=months.reduce((s,m)=>s+(need[b]?.[m]||0),0);return tb-ta||a.localeCompare(b)});
+ const stockOf=n=>{const g=P[n]?.stock_grp;return g&&sum[g]?sum[g].good:null};
+ return{P,skus,months,need,names,stockOf,sum}}
+function renderProj(){
+ const{P,skus,months,need,names,stockOf}=projData();
+ const imp=`<div class="pbar"><label class="ghostd">Import projections (.xlsx)<input type="file" id="pimp" accept=".xlsx,.xls" hidden></label><span class="mut">Same layout as “Noice Projections”: Working, Calculation and Seasoning Per Kg sheets. Nothing from the file is stored in the website code.</span></div>${PI?`<div class="al amb pprev"><strong>Ready to import</strong> ${PI.skus.length} products, ${PI.seas.length} seasonings, ${PI.months.length} months (${mlabel(PI.months[0])} – ${mlabel(PI.months[PI.months.length-1])}). Planned packets for these products and months will be replaced. <button class="pill" id="pgo">Import</button> <button class="x" id="pno">Cancel</button></div>`:''}`;
+ if(!skus.length)return imp+'<div class="empty">No projections yet. Import your projections file to see how much seasoning the plan needs, month by month, against what is in stock.</div>';
+ const sopt=(cur)=>`<option value="">— not linked —</option>`+Object.entries(S.items||{}).filter(([,s])=>s.sort!=null&&s.sort!=='').sort((a,b)=>a[1].sort-b[1].sort).map(([id,s])=>`<option value="${esc(id)}"${id===cur?' selected':''}>${esc(s.item)} · ${esc(s.client)}</option>`).join('');
+ // 1. need vs stock
+ const cur=today().slice(0,8)+'01',ahead=months.filter(m=>m>=cur);
+ const rows1=names.filter(n=>need[n]||P[n]).map(n=>{const st=stockOf(n),pc=P[n]?.pct;let cum=0,out='';
+  const cells=months.map(m=>{const v=need[n]?.[m]||0;if(m<cur)return`<td class="n past">${v?fmt(r1(v)):''}</td>`;cum+=v;const short=st!=null&&cum>st+1e-9;if(short&&!out)out=m;return`<td class="n ${v?(st==null?'':short?'pshort':'pok'):''}">${v?fmt(r1(v)):''}</td>`}).join('');
+  const left=st!=null?st-cum:null;
+  return`<tr><td><b>${esc(n)}</b></td><td class="n">${pc?pctS(pc)+'%':'<span class="mut">set %</span>'}</td><td class="n c">${st!=null?fmt(st):'<span class="mut">link stock ↓</span>'}</td>${cells}<td class="n c">${fmt(r1(cum))}</td><td class="n c ${left==null?'':left<0?'neg':'pos'}">${left==null?'':(left<0?'−':'')+fmt(r1(Math.abs(left)))}</td><td>${st==null?'':out?`<span class="chip r">Short from ${mlabel(out)}</span>`:'<span class="chip s">Covers plan</span>'}</td></tr>`}).join('');
+ const t1=`<h3 class="ph">Seasoning needed vs usable stock (kg)</h3><p class="mut pnote">Need = packets × pack size × seasoning %. From this month on: green while usable (unexpired) stock still covers the running total, red once it runs short. Past months are greyed out and not counted against today's stock.</p>
+ <table class="pt"><thead><tr><th>Seasoning</th><th class="n">%</th><th class="n">Usable stock</th>${months.map(m=>`<th class="n${m<cur?' past':''}">${mlabel(m)}</th>`).join('')}<th class="n">Need from ${ahead.length?mlabel(ahead[0]):'now'}</th><th class="n">Left after plan</th><th></th></tr></thead><tbody>${rows1}</tbody></table>`;
+ // 2. FG possible from current stock (Calculation sheet)
+ const rows2=skus.flatMap(sk=>(sk.seasonings||[]).map((n,k)=>{const pc=P[n]?.pct,st=stockOf(n),fg=st!=null&&pc?st/pc:null,pk=fg!=null&&sk.pack_kg?fg/sk.pack_kg:null;
+  const planned=months.reduce((s,m)=>s+(+(S.plan[sk.id+'|'+m]||0)),0);
+  return`<tr><td>${k?'':`<b>${esc(sk.name)}</b> <span class="mut">${esc(sk.id)}</span>`}</td><td>${esc(n)}</td><td class="n">${pc?pctS(pc)+'%':''}</td><td class="n">${sk.pack_kg?fmt(sk.pack_kg*1000)+' g':''}</td><td class="n">${st!=null?fmt(st):''}</td><td class="n c">${fg!=null?fmt(Math.round(fg)):''}</td><td class="n c">${pk!=null?fmt(Math.round(pk)):''}</td><td class="n">${k?'':fmt(planned)}</td></tr>`})).join('');
+ const t2=`<h3 class="ph">Finished goods possible from current stock</h3><p class="mut pnote">Like the Calculation sheet: usable seasoning ÷ % = FG kg, ÷ pack size = packets. Where several products share a seasoning, each row assumes all of it goes to that product.</p>
+ <table class="pt"><thead><tr><th>Product</th><th>Seasoning</th><th class="n">%</th><th class="n">Pack</th><th class="n">Seasoning (kg)</th><th class="n">FG possible (kg)</th><th class="n">Packets possible</th><th class="n">Planned packets</th></tr></thead><tbody>${rows2}</tbody></table>`;
+ // 3. plan grid (editable)
+ const rows3=skus.map(sk=>{const tot=months.reduce((s,m)=>s+(+(S.plan[sk.id+'|'+m]||0)),0);
+  return`<tr><td><b>${esc(sk.name)}</b><br><span class="mut">${esc(sk.id)} · ${esc((sk.seasonings||[]).join(', ')||'no seasoning')}</span></td><td class="n"><input type="number" min="0" step="1" data-sku="${esc(sk.id)}" data-f="pack_g" value="${sk.pack_kg?Math.round(sk.pack_kg*1000*100)/100:''}" aria-label="Pack size in grams"></td>${months.map(m=>`<td class="n"><input type="number" min="0" step="1" data-sku="${esc(sk.id)}" data-m="${m}" value="${S.plan[sk.id+'|'+m]??''}" aria-label="Packets ${mlabel(m)}"></td>`).join('')}<td class="n c">${fmt(tot)}</td></tr>`}).join('');
+ const t3=`<h3 class="ph">Production plan (packets)</h3><p class="mut pnote">Type over any number; everything above updates.</p>
+ <table class="pt plan"><thead><tr><th>Product</th><th class="n">Pack (g)</th>${months.map(m=>`<th class="n">${mlabel(m)}</th>`).join('')}<th class="n">Total</th></tr></thead><tbody>${rows3}</tbody></table>`;
+ // 4. seasoning settings
+ const rows4=names.map(n=>`<tr><td><b>${esc(n)}</b></td><td class="n"><input type="number" min="0" max="100" step="0.01" data-seas="${esc(n)}" data-f="pct" value="${pctS(P[n]?.pct)}" aria-label="Seasoning percent"></td><td><select data-seas="${esc(n)}" data-f="stock_grp" aria-label="Stock line">${sopt(P[n]?.stock_grp||'')}</select></td></tr>`).join('');
+ const t4=`<h3 class="ph">Seasoning % and stock link</h3><p class="mut pnote">Which line of your Summary holds each seasoning's stock. Linked lines also get their FG Qty calculated on the Summary.</p>
+ <table class="pt"><thead><tr><th>Seasoning</th><th class="n">% of FG</th><th>Stock (Summary line)</th></tr></thead><tbody>${rows4}</tbody></table>`;
+ return imp+t1+t2+t3+t4}
+/* import a projections workbook in the browser */
+let PI=null;
+function parseProj(buf){
+ const wb=XLSX.read(buf,{type:'array',cellDates:true});const sh=n=>wb.Sheets[wb.SheetNames.find(x=>key(x)===key(n))];
+ const grid=ws=>ws?XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null}):[];
+ const nk=v=>key(String(v??''));
+ // Seasoning Per Kg
+ const seas={};const sp=grid(sh('Seasoning Per Kg'));const hs=sp.findIndex(r=>r.some(c=>nk(c)==='item name'));
+ if(hs>=0){const h=sp[hs].map(nk),ci=h.indexOf('item name'),cp=h.indexOf('per kg');for(const r of sp.slice(hs+1)){const n=String(r[ci]??'').trim();if(n&&typeof r[cp]==='number')seas[n]=r[cp]}}
+ // Calculation: product → seasonings, pack size
+ const skus={};const ca=grid(sh('Calculation'));const hc=ca.findIndex(r=>r.some(c=>nk(c)==='pe id'));
+ if(hc>=0){const h=ca[hc].map(nk),c=k=>h.findIndex(x=>x===k),iId=c('pe id'),iCode=c('item_code'),iName=c('sku_name'),iS=h.findIndex(x=>x==='sesoning'||x==='seasoning'),iP=h.findIndex(x=>x==='sesoning per kg'||x==='seasoning per kg'),iU=c('uom');
+  for(const r of ca.slice(hc+1)){const id=String(r[iId]??'').trim();if(!id)continue;const sk=skus[id]??={id,item_code:String(r[iCode]??''),name:String(r[iName]??id).trim(),pack_kg:null,seasonings:[]};
+   if(typeof r[iU]==='number'&&!sk.pack_kg)sk.pack_kg=r[iU];const n=String(r[iS]??'').trim();if(n){if(!sk.seasonings.includes(n))sk.seasonings.push(n);if(typeof r[iP]==='number'&&seas[n]==null)seas[n]=r[iP]}}}
+ // Working: first table of packets per month
+ const wk=grid(sh('Working'));const hw=wk.findIndex(r=>r.some(c=>nk(c)==='pe id')&&r.some(c=>c instanceof Date));
+ const client=(String((wk[0]||[])[0]??'').split(/[<>]/)[0]||'').trim();
+ const plan=[],monthsSet=new Set();let order=0;
+ if(hw>=0){const h=wk[hw],iId=h.findIndex(c=>nk(c)==='pe id'),iName=h.findIndex(c=>nk(c)==='sku_name'),iCode=h.findIndex(c=>nk(c)==='item_code');
+  const mcols=h.map((c,i)=>{if(!(c instanceof Date))return null;const d=new Date(c.getTime()+12*36e5);let y=d.getUTCFullYear(),mo=d.getUTCMonth()+1,day=d.getUTCDate();
+   if(day>=20&&day<=40)y=2000+day; // "Jul-26" typed in Sheets becomes 26 July: the day is the year
+   return{i,m:y+'-'+String(mo).padStart(2,'0')+'-01'}}).filter(Boolean);
+  for(const r of wk.slice(hw+1)){const id=String(r[iId]??'').trim();if(!id)break;order++;
+   const sk=skus[id]??={id,item_code:String(r[iCode]??''),name:String(r[iName]??id).trim(),pack_kg:null,seasonings:[]};sk.sort=order;
+   for(const{i,m}of mcols){monthsSet.add(m);if(typeof r[i]==='number')plan.push({sku_id:id,month:m,packets:r[i]})}}}
+ const out=Object.values(skus).map(s=>({...s,client,sort:s.sort??(500+Object.keys(skus).indexOf(s.id))}));
+ return{skus:out,seas:Object.entries(seas).map(([name,pct])=>({name,pct,stock_grp:S.ps?.[name]?.stock_grp||autoLink(name,client)})),plan,months:[...monthsSet].sort()}}
+document.addEventListener('change',async e=>{if(e.target.id!=='pimp')return;const f=e.target.files[0];e.target.value='';if(!f)return;
+ if(!window.XLSX){toast('Excel reader did not load — check your connection');return}
+ try{PI=parseProj(await f.arrayBuffer());if(!PI.skus.length||!PI.months.length){PI=null;toast('No projections found in that file')}}catch(err){PI=null;toast('Could not read that file: '+err.message)}render()});
+document.addEventListener('click',e=>{if(e.target.id==='pno'){PI=null;render()}else if(e.target.id==='pgo'&&PI){const p=PI;PI=null;act('importProj',p);toast(`Imported ${p.skus.length} products and ${p.plan.length} plan figures`)}});
 /* page events */
 document.addEventListener('click',e=>{const t=e.target.closest('button');if(!t)return;const d=t.dataset;
  if(d.open)open(d.open);else if(d.row)open(d.row,d.id);else if(d.wo)open('exp',d.wo);
- else if(d.allx){U.allx=!U.allx;render()}else if(d.c){U.client=d.c;render()}else if(d.v){U.view=d.v;render()}
+ else if(d.allx){U.allx=!U.allx;render()}else if(d.c){U.client=d.c;render()}else if(d.v){U.view=d.v;PI=null;render()}
  else if(d.flag!=null){act('dismissFlag',{text:S.flags[+d.flag]})}
  else if(d.del){if(t.textContent!='sure?'){t.textContent='sure?';return}const m=S.moves.find(x=>x.id==d.del);act('deleteMove',{id:d.del});toast('Movement deleted',()=>act('addMove',{move:m}))}
  else if(d.item){U.view='batches';U.client=d.cl;U.q=d.item;$('#q').value=d.item;render()}});
-$('#view').addEventListener('change',e=>{const i=e.target;if(!i.dataset.f)return;
+$('#view').addEventListener('change',e=>{const i=e.target;
+ if(i.dataset.m){const v=i.value.trim();if(v!==''&&!(+v>=0)){toast('Packets must be a number');render();return}act('setPlan',{sku:i.dataset.sku,month:i.dataset.m,v:v===''?0:+v});return}
+ if(i.dataset.sku&&i.dataset.f=='pack_g'){const v=+i.value;if(!(v>0)){toast('Pack size must be more than 0 g');render();return}act('setSku',{id:i.dataset.sku,f:'pack_kg',v:v/1000});return}
+ if(i.dataset.seas){if(i.dataset.f=='pct'){const v=i.value.trim();if(v!==''&&!(+v>0&&+v<=100)){toast('Seasoning % must be between 0 and 100');render();return}act('setSeas',{name:i.dataset.seas,f:'pct',v:v===''?null:+v/100})}else act('setSeas',{name:i.dataset.seas,f:'stock_grp',v:i.value});return}
+ if(!i.dataset.f)return;
  if(i.dataset.it){let v=i.value.trim();if(i.dataset.f=='fg'){if(v!==''&&!(+v>=0)){toast('FG Qty must be a number');render();return}v=v===''?'':+v}
   act('setItem',{id:i.dataset.it,client:i.dataset.cl,item:i.dataset.nm,f:i.dataset.f,v});return}
  const b=S.batches.find(x=>x.id==i.dataset.b);if(!b)return;
@@ -233,6 +331,7 @@ $('#xl').onclick=async()=>{if(!window.XLSX){toast('Excel library did not load �
  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(S.moves.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(m=>({Date:dshow(m.date),Type:NAMES[m.t],Client:B[m.b]?.client,Seasoning:B[m.b]?.item,Batch:B[m.b]?.batch,'For client':m.t=='use'?(m.fc||B[m.b]?.client):'','Qty (kg)':m.t=='use'||m.t=='exp'?-m.q:m.q,Note:m.note}))),'Movements');
  const name='Seasonings_Stock_'+today()+'.xlsx',blob=new Blob([XLSX.write(wb,{bookType:'xlsx',type:'array'})],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000)};
+if(location.hash=='#projections')U.view='proj';
 render();status();
 (async()=>{let ok=false;try{const c=client();if(c){const{data}=await c.auth.getSession();ok=!!data.session}}catch(e){}if(!ok)showSetup(CFG.url?'Please sign in.':'');else{goLive();Q.length?flush():pull()}})();
 }
