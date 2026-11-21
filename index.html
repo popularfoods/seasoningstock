@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Seasoning Stock</title><meta name="robots" content="noindex"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&display=swap"><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script><style id="css">
+/* VOICE: a store-room ledger — brisk, clear, nothing decorative
+   IDEA: the turmeric-yellow stock tag pinned on a seasoning carton
+   PICTURE: the live ledger grid itself, with expiry chips
+   COLOUR and TYPE: turmeric band, carbon ink, chilli red for expiry/usage; Archivo wide for heads, normal for grid
+   LAYOUT: tag band (figures + actions), alerts, client tabs, grid */
+:root{color-scheme:light dark;--bg:light-dark(#fff,#14110b);--ink:light-dark(#1b1609,#f3ead2);--mut:light-dark(#6d6352,#a99d84);--line:light-dark(#e7e0cf,#2e281c);--soft:light-dark(#faf6ea,#1c1810);--tag:light-dark(#f4b41a,#2a2008);--tagink:light-dark(#1b1609,#f4c445);--chili:light-dark(#c42d17,#ff6b4f);--chilisoft:light-dark(#fde4dc,#3a1710);--amber:light-dark(#9a5d00,#f6b445);--ambersoft:light-dark(#fff0cf,#33260a);--ok:light-dark(#1b1609,#f3ead2)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Archivo,system-ui,sans-serif;overflow-x:clip;font-variant-numeric:tabular-nums}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--chili);outline-offset:2px}
+.tag{background:var(--tag);color:var(--tagink);padding:22px max(4vw,16px) 0}
+.top{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;max-width:1400px;margin:auto}
+h1{font-size:clamp(30px,4.4vw,48px);line-height:1.02;margin:0;font-weight:800;font-stretch:118%;letter-spacing:-.01em}
+.sub{margin:4px 0 0;font-size:14px;opacity:.8}
+.tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#save{font-size:13px;opacity:.85}
+.ghost{border:2px solid currentColor;background:none;border-radius:10px;padding:8px 14px;min-height:44px;font-weight:700}
+.figs{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));max-width:1400px;margin:20px auto 0;border-top:2px solid currentColor}
+.fig{padding:14px 14px 16px 0;border-right:1px solid color-mix(in srgb,currentColor 25%,transparent)}
+.fig:last-child{border:0}.fig+.fig{padding-left:14px}
+.fig b{display:block;font-size:clamp(24px,2.8vw,36px);font-weight:800;font-stretch:110%;line-height:1.1;white-space:nowrap}
+.fig b small{font-size:.5em;font-weight:600;margin-left:3px}
+.fig span{font-size:13px}
+.fig.bad b{color:var(--chili)}
+.acts{display:flex;flex-wrap:wrap;gap:10px;max-width:1400px;margin:0 auto;padding:18px 0 22px}
+.act{display:flex;align-items:center;gap:10px;border:0;border-radius:12px;padding:12px 20px;min-height:52px;font-weight:700;font-size:17px;background:var(--tagink);color:var(--tag)}
+.act i{font-style:normal;font-size:22px;line-height:1;font-weight:800}
+.act.use{background:var(--chili);color:#fff}
+.act.exp,.act.adj{background:transparent;color:var(--tagink);border:2px solid var(--tagink)}
+main{max-width:1400px;margin:auto;padding:20px max(4vw,16px) 60px}
+.alerts{display:grid;gap:10px;margin-bottom:18px}
+.al{border-radius:12px;padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.al.red{background:var(--chilisoft)}.al.amb{background:var(--ambersoft)}
+.al strong{margin-right:4px}
+.pill{border:1px solid color-mix(in srgb,currentColor 30%,transparent);background:var(--bg);border-radius:99px;padding:4px 12px;font-size:14px;white-space:nowrap}
+details.al{background:var(--soft);display:block}
+details.al summary{cursor:pointer;font-weight:700}
+details ul{margin:10px 0 0;padding-left:18px;font-size:14px}details li{margin:4px 0}
+.x{border:0;background:none;color:var(--mut);text-decoration:underline;font-size:13px;padding:2px 6px}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;border-bottom:2px solid var(--ink);margin-bottom:0}
+.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+.tabs button{flex:none;border:0;background:none;padding:12px 14px;min-height:44px;font-weight:600;white-space:nowrap;border-radius:10px 10px 0 0;color:var(--mut)}
+.tabs button small{font-weight:500;margin-left:6px}
+.tabs button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+.ctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px 0}
+.ctl input[type=search],.ctl select{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:8px 12px;min-height:44px;font-size:16px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:none;padding:8px 12px;min-height:42px;font-size:14px;font-weight:600}
+.seg button[aria-pressed=true]{background:var(--tag);color:var(--tagink)}
+.chk{font-size:14px;display:flex;gap:6px;align-items:center;color:var(--mut)}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th{position:sticky;top:0;background:var(--soft);text-align:left;font-size:12px;font-weight:700;color:var(--mut);padding:8px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{border-bottom:1px solid var(--line);padding:0 6px;height:40px;white-space:nowrap}
+td.n,th.n{text-align:right}
+td.c{font-weight:800;font-size:15px}
+tr.dead td{color:var(--mut)}
+tr:hover td{background:var(--soft)}
+td input{border:1px solid transparent;background:transparent;padding:6px;border-radius:6px;width:100%;font-size:14px;min-width:70px}
+td input:hover{border-color:var(--line)}td input:focus{border-color:var(--ink);background:var(--bg);outline:0}
+td input.w{min-width:170px}td input[type=number]{text-align:right;width:84px}
+.chip{display:inline-block;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700;white-space:nowrap}
+.chip.r{background:var(--chili);color:#fff}.chip.a{background:var(--ambersoft);color:var(--amber)}.chip.s{color:var(--mut);border:1px solid var(--line)}
+.rb{display:flex;gap:4px}
+.rb button{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--bg);font-weight:800}
+.rb button:hover{border-color:var(--ink)}
+.t{font-size:12px;font-weight:700;border-radius:6px;padding:2px 8px}
+.t.in{background:var(--ink);color:var(--bg)}.t.use{background:var(--chili);color:#fff}.t.exp{background:var(--ambersoft);color:var(--amber)}.t.adj{border:1px solid var(--line)}
+.empty{padding:40px;text-align:center;color:var(--mut)}
+.click{cursor:pointer}
+#sheet{position:fixed;inset:0;background:rgb(0 0 0/.45);display:flex;justify-content:flex-end;z-index:9}
+#sheet[hidden]{display:none}
+#f{background:var(--bg);width:min(460px,100%);height:100%;overflow:auto;padding:22px;display:grid;gap:14px;align-content:start;box-shadow:-20px 0 40px rgb(0 0 0/.2)}
+#f h2{margin:0;font-size:26px;font-stretch:115%;font-weight:800}
+#f label{display:grid;gap:4px;font-size:13px;font-weight:600;color:var(--mut)}
+#f input,#f select{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px 12px;min-height:46px;font-size:16px;color:var(--ink)}
+#f .seg{width:100%}#f .seg button{flex:1}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.qrow{display:flex;gap:8px}.qrow input{flex:1}
+.qrow button{border:1px solid var(--line);background:var(--soft);border-radius:10px;padding:0 14px;font-weight:700}
+#fhint{margin:0;font-size:14px;min-height:1.5em}#fhint.bad{color:var(--chili);font-weight:700}
+.fb{display:flex;gap:10px}.fb button{min-height:50px;border-radius:12px;font-weight:800;font-size:17px;padding:0 22px}
+.go{background:var(--ink);color:var(--bg);border:0;flex:1}
+.cancel{background:none;border:2px solid var(--line)}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:12px 16px;border-radius:12px;display:flex;gap:14px;align-items:center;z-index:10;max-width:calc(100% - 32px);font-size:15px;animation:up .25s ease}
+#toast[hidden]{display:none}#toast button{background:none;border:0;color:var(--tag);font-weight:800;text-decoration:underline}
+@keyframes up{from{transform:translate(-50%,20px);opacity:0}}
+#setup{position:fixed;inset:0;background:rgb(0 0 0/.5);display:grid;place-items:center;z-index:11;padding:16px}
+#sf{background:var(--bg);width:min(540px,100%);border-radius:18px;padding:26px;display:grid;gap:14px;max-height:100%;overflow:auto}
+#sf h2{margin:0;font-size:28px;font-stretch:115%;font-weight:800;line-height:1.1}#sf h3{margin:8px 0 0}
+.lead{margin:0;color:var(--mut);font-size:15px}
+#sf label{display:grid;gap:4px;font-size:13px;font-weight:600;color:var(--mut)}
+#sf input{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px 12px;min-height:46px;font-size:16px;color:var(--ink)}
+#smsg{margin:0;font-size:14px;min-height:1.4em}#smsg.bad{color:var(--chili);font-weight:700}
+#sf .x{justify-self:start}
+#save.warn{font-weight:700}
+@media(prefers-reduced-motion:reduce){#toast{animation:none}}
+@media(max-width:900px){.figs{grid-template-columns:repeat(3,minmax(0,1fr))}.fig:nth-child(3){border:0}.fig:nth-child(4){padding-left:0}.fig:nth-child(n+4){border-top:1px solid color-mix(in srgb,currentColor 25%,transparent)}}
+@media(max-width:600px){.pill{white-space:normal;text-align:left}.figs{grid-template-columns:repeat(2,minmax(0,1fr))}.fig{border-right:0!important;padding-left:0!important;border-top:1px solid color-mix(in srgb,currentColor 25%,transparent)}.fig:nth-child(odd){border-right:1px solid color-mix(in srgb,currentColor 25%,transparent)!important}.fig:nth-child(even){padding-left:14px!important}.act{flex:1 1 45%;justify-content:center;font-size:15px;padding:12px}.g2{grid-template-columns:1fr}}
+</style></head>
+<body>
+<template id="shell">
+<header class="tag">
+ <div class="top"><div><h1>Seasoning stock</h1><p class="sub" id="sub"></p></div>
+  <div class="tools"><span id="save"></span><button class="ghost" id="cfg">Connection</button><button class="ghost" id="xl">Export to Excel</button></div></div>
+ <div class="figs" id="figs"></div>
+ <div class="acts">
+  <button class="act" data-open="in"><i>+</i>Receive stock</button>
+  <button class="act use" data-open="use"><i>−</i>Use in production</button>
+  <button class="act exp" data-open="exp"><i>×</i>Write off / expired</button>
+  <button class="act adj" data-open="adj"><i>±</i>Correct count</button>
+ </div>
+</header>
+<main>
+ <div class="alerts" id="alerts"></div>
+ <div class="bar"><div class="tabs" id="tabs"></div></div>
+ <div class="ctl">
+  <input type="search" id="q" placeholder="Search seasoning, batch, supplier…" aria-label="Search">
+  <div class="seg" id="views"><button data-v="batches">Batches</button><button data-v="items">By seasoning</button><button data-v="log">Movements</button></div>
+  <label class="chk"><input type="checkbox" id="empty"> Show finished batches</label>
+ </div>
+ <div class="scroll" id="view"></div>
+</main>
+<div id="sheet" hidden><form id="f" autocomplete="off">
+ <h2 id="ftitle">Receive stock</h2>
+ <div class="seg" id="ftype"><button type="button" data-t="in">Receive</button><button type="button" data-t="use">Use</button><button type="button" data-t="exp">Write off</button><button type="button" data-t="adj">Correct</button></div>
+ <div class="g2"><label>Date<input type="date" name="date" required></label><label>Client<input name="client" list="dl-c" required placeholder="Client name"></label></div>
+ <label>Seasoning<input name="itm" list="dl-i" placeholder="Start typing…"></label>
+ <label id="fpick">Batch<select name="b"></select></label>
+ <div id="fnew" class="g2">
+  <label>Batch no.<input name="batch"></label><label>Product code<input name="code"></label>
+  <label>Supplier<input name="supplier" list="dl-s"></label><label>Base<input name="base" placeholder="e.g. Makhana"></label>
+  <label>MFG date<input type="date" name="mfg"></label><label>EXP date<input type="date" name="exp"></label>
+ </div>
+ <label id="flq">Quantity (kg)<span class="qrow"><input name="q" type="number" step="0.001" inputmode="decimal" required><button type="button" id="fall">All</button></span></label>
+ <p id="fhint"></p>
+ <label>Note<input name="note" placeholder="e.g. Line 2 – peri peri makhana"></label>
+ <div class="fb"><button class="go" type="submit">Save</button><button class="cancel" type="button" id="fx">Cancel</button></div>
+ <datalist id="dl-c"></datalist><datalist id="dl-i"></datalist><datalist id="dl-s"></datalist>
+</form></div>
+<div id="setup" hidden><form id="sf" autocomplete="off">
+ <h2>Connect your Google Sheet</h2>
+ <p class="lead">Paste the Web app URL and team key from the Apps Script setup. They're saved only in this browser — never in the code.</p>
+ <label>Web app URL<input name="api" type="url" required placeholder="https://script.google.com/macros/s/…/exec"></label>
+ <label>Team key<input name="key" required autocomplete="off"></label>
+ <p id="smsg"></p>
+ <div class="fb"><button class="go" type="submit">Connect</button><button class="cancel" type="button" id="sx">Close</button></div>
+ <div id="imp" hidden><h3>Your sheet is empty</h3><p class="lead">Import your starting stock file (the .json file Claude sent you). This only works once, on an empty sheet.</p><input type="file" id="impf" accept=".json,application/json"></div>
+ <button class="x" type="button" id="forget">Disconnect this browser</button>
+</form></div>
+<div id="toast" hidden></div>
+</template>
+<div id="root"></div>
+<script src="app.js"></script>
+</body>
+</html>

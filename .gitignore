@@ -1,0 +1,7 @@
+# Stock data never goes in this repo — it lives in the Google Sheet.
+*.json
+*.xlsx
+*.xls
+*.csv
+.env*
+.DS_Store
