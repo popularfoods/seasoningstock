@@ -77,6 +77,13 @@ begin
   end loop;
 end $$;
 
+-- 4b. Table permissions for signed-in users (newer Supabase projects don't grant these automatically).
+--     The policies above still decide which rows: only members get anything.
+grant usage on schema public to authenticated;
+grant select, insert, update on public.batches, public.movements, public.flags to authenticated;
+grant execute on function public.is_member() to authenticated;
+revoke all on public.batches, public.movements, public.flags, public.members from anon;
+
 -- 5. A ready-made stock view for the Table Editor / reports (same numbers as the app)
 create or replace view public.stock with (security_invoker = true) as
 select b.id, b.client, b.item, b.base, b.supplier, b.code, b.batch, b.mfg, b.exp, b.ext, b.opening,
@@ -89,6 +96,8 @@ select b.id, b.client, b.item, b.base, b.supplier, b.code, b.batch, b.mfg, b.exp
 from public.batches b
 left join public.movements m on m.batch_id = b.id and not m.deleted
 group by b.id;
+grant select on public.stock to authenticated;
+revoke all on public.stock from anon;
 
 -- 6. Live updates between phones
 do $$
